@@ -104,7 +104,7 @@ export default function Agenda() {
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-6">
         <div className="bg-surface border border-border rounded-2xl p-5">
           <p className="text-textsecondary text-xs mb-1">Pendentes</p>
           <p className="font-display text-3xl font-bold text-textprimary">{pendentes.length}</p>
@@ -157,7 +157,7 @@ export default function Agenda() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <Icone size={14} className={cat?.cor || 'text-textsecondary'} />
-                  <p className={`font-medium text-sm ${l.concluido ? 'line-through text-textsecondary' : 'text-textprimary'}`}>
+                  <p className={`font-medium text-sm truncate ${l.concluido ? 'line-through text-textsecondary' : 'text-textprimary'}`}>
                     {l.descricao}
                   </p>
                   {vencido && <span className="text-xs bg-red/20 text-red px-2 py-0.5 rounded-full">Vencido</span>}
@@ -192,8 +192,8 @@ export default function Agenda() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-6">
               {editandoId ? 'Editar Lembrete' : 'Novo Lembrete'}
             </h2>

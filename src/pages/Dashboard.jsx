@@ -109,7 +109,7 @@ export default function Dashboard() {
       )}
 
       {/* Saldo e quanto pode gastar */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-surface border border-border rounded-2xl p-6">
           <p className="text-textsecondary text-sm mb-2">Saldo Livre Hoje</p>
           <p className="font-display text-4xl font-bold" style={{ color: corSaldo(saldoInicial) }}>
@@ -136,7 +136,7 @@ export default function Dashboard() {
       </div>
 
       {/* Projeção futura */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-3 md:gap-4">
         {[
           { label: 'Daqui 30 dias', valor: saldo30 },
           { label: 'Daqui 60 dias', valor: saldo60 },
@@ -152,7 +152,7 @@ export default function Dashboard() {
       </div>
 
       {/* Gastos por categoria + Histórico de saldo */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-surface border border-border rounded-2xl p-6">
           <p className="text-textprimary font-medium mb-4">Gastos este mês por categoria</p>
           {gastosPorCategoria.length > 0 ? (
@@ -242,7 +242,7 @@ export default function Dashboard() {
       {reservas.length > 0 && (
         <div className="bg-surface border border-border rounded-2xl p-6">
           <p className="text-textprimary font-medium mb-4">Progresso das Reservas</p>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {reservas.map(r => {
               const pct = Math.min(100, Math.round((Number(r.saldo_atual) / Number(r.meta_valor)) * 100))
               const cor = pct >= 100 ? '#22C55E' : pct >= 50 ? '#EAB308' : '#6366F1'
@@ -274,7 +274,7 @@ export default function Dashboard() {
             <p className="text-textprimary font-medium">Objetivos</p>
             <a href="/objetivos" className="text-indigo text-xs hover:underline">Ver todos</a>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {objetivosAtivos.slice(0, 4).map(o => {
               const pct = Math.min(100, Math.round((Number(o.valor_atual) / Number(o.valor_alvo)) * 100))
               const cor = pct >= 100 ? '#22C55E' : pct >= 50 ? '#EAB308' : '#6366F1'
@@ -304,7 +304,7 @@ export default function Dashboard() {
       )}
 
       {/* Alertas */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-surface border border-border rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-2">
             <TrendingDown size={15} className="text-red" />

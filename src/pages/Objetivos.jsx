@@ -119,7 +119,7 @@ export default function Objetivos() {
             <div key={o.id} className="bg-surface border border-border rounded-2xl p-6">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <p className="font-display font-bold text-textprimary">{o.nome}</p>
+                  <p className="font-display font-bold text-textprimary truncate">{o.nome}</p>
                   {o.descricao && <p className="text-textsecondary text-xs mt-0.5">{o.descricao}</p>}
                   {o.conta && <p className="text-xs text-indigo mt-1">Vinculado: {o.conta.nome}</p>}
                 </div>
@@ -173,8 +173,8 @@ export default function Objetivos() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto py-8">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-6">
               {editandoId ? 'Editar Objetivo' : 'Novo Objetivo'}
             </h2>

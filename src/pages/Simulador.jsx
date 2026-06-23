@@ -103,7 +103,7 @@ export default function Simulador() {
 
       {/* Formulário */}
       <div className="bg-surface border border-border rounded-2xl p-6 mb-6">
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="text-textsecondary text-sm mb-1 block">O que você quer comprar?</label>
             <input value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })}

@@ -160,9 +160,9 @@ export default function VisaoMensal() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left px-6 py-4 text-textsecondary text-sm font-medium w-20">Dia</th>
-              <th className="text-left px-6 py-4 text-textsecondary text-sm font-medium">Eventos</th>
-              <th className="text-right px-6 py-4 text-textsecondary text-sm font-medium">Saldo do Dia</th>
+              <th className="text-left px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium w-14 md:w-20">Dia</th>
+              <th className="text-left px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium">Eventos</th>
+              <th className="text-right px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium">Saldo</th>
             </tr>
           </thead>
           <tbody>
@@ -178,31 +178,31 @@ export default function VisaoMensal() {
                     isHoje ? 'bg-indigo/10' : diaSelecionado === dt.getDate() ? 'bg-white/5' : 'hover:bg-white/5'
                   }`}
                   onClick={() => setDiaSelecionado(dt.getDate() === diaSelecionado ? null : dt.getDate())}>
-                  <td className="px-6 py-3">
-                    <span className={`font-display font-bold text-lg ${isHoje ? 'text-indigo' : 'text-textsecondary'}`}>
+                  <td className="px-3 md:px-6 py-2 md:py-3">
+                    <span className={`font-display font-bold text-base md:text-lg ${isHoje ? 'text-indigo' : 'text-textsecondary'}`}>
                       {String(dt.getDate()).padStart(2, '0')}
                     </span>
-                    {isHoje && <span className="ml-2 text-xs text-indigo font-medium">hoje</span>}
+                    {isHoje && <span className="ml-1 md:ml-2 text-xs text-indigo font-medium">hoje</span>}
                   </td>
-                  <td className="px-6 py-3">
+                  <td className="px-3 md:px-6 py-2 md:py-3">
                     {dia.eventos.length > 0 ? (
                       <div className="space-y-1">
                         {dia.eventos.map((ev, j) => (
-                          <div key={j} className="flex items-center gap-2">
+                          <div key={j} className="flex items-center gap-1 md:gap-2">
                             <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ev.tipo === 'entrada' ? 'bg-green' : ev.tipo === 'saida' ? 'bg-red' : 'bg-indigo'}`} />
-                            <span className="text-sm text-textsecondary">{ev.descricao}</span>
-                            <span className={`text-sm font-medium ml-auto ${ev.tipo === 'entrada' ? 'text-green' : 'text-red'}`}>
+                            <span className="text-xs text-textsecondary truncate max-w-[100px] md:max-w-none">{ev.descricao}</span>
+                            <span className={`text-xs font-medium ml-auto flex-shrink-0 ${ev.tipo === 'entrada' ? 'text-green' : 'text-red'}`}>
                               {ev.tipo === 'entrada' ? '+' : ev.tipo === 'saida' ? '-' : ''}{formatBRL(ev.valor)}
                             </span>
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-textsecondary/40 text-sm">—</span>
+                      <span className="text-textsecondary/40 text-xs">—</span>
                     )}
                   </td>
-                  <td className="px-6 py-3 text-right">
-                    <span className="font-display font-bold text-lg" style={{ color: cor }}>
+                  <td className="px-3 md:px-6 py-2 md:py-3 text-right">
+                    <span className="font-display font-bold text-sm md:text-lg" style={{ color: cor }}>
                       {formatBRL(dia.saldo)}
                     </span>
                     {status === 'negativo' && (

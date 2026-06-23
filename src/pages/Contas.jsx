@@ -108,7 +108,7 @@ export default function Contas() {
       </div>
 
       {/* Resumo por categoria */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         {categoriasConta.map(cat => (
           <div key={cat.valor} className="bg-surface border border-border rounded-2xl p-6">
             <div className="flex items-center gap-2 mb-2">
@@ -188,8 +188,8 @@ export default function Contas() {
       })}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto py-8">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-6">
               {editandoId ? 'Editar Conta' : 'Nova Conta'}
             </h2>

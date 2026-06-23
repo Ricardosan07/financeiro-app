@@ -265,11 +265,11 @@ export default function Movimentacoes() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left px-6 py-4 text-textsecondary text-sm font-medium">Data</th>
-              <th className="text-left px-6 py-4 text-textsecondary text-sm font-medium">Descrição</th>
-              <th className="text-left px-6 py-4 text-textsecondary text-sm font-medium">Conta</th>
-              <th className="text-right px-6 py-4 text-textsecondary text-sm font-medium">Valor</th>
-              <th className="px-6 py-4"></th>
+              <th className="text-left px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium">Data</th>
+              <th className="text-left px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium">Descrição</th>
+              <th className="hidden md:table-cell text-left px-6 py-4 text-textsecondary text-sm font-medium">Conta</th>
+              <th className="text-right px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium">Valor</th>
+              <th className="px-3 md:px-6 py-3 md:py-4"></th>
             </tr>
           </thead>
           <tbody>
@@ -277,23 +277,23 @@ export default function Movimentacoes() {
               const Icone = iconePorTipo[m.tipo]
               return (
                 <tr key={m.id} className="border-b border-border/50 hover:bg-white/5 transition-colors">
-                  <td className="px-6 py-4 text-textsecondary text-sm">
+                  <td className="px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm">
                     {m.recorrente ? `Todo dia ${m.dia_recorrencia}` : formatData(m.data)}
                   </td>
-                  <td className="px-6 py-4 text-textprimary">
-                    <div className="flex items-center gap-2">
-                      <Icone size={15} className={corPorTipo[m.tipo]} />
-                      {m.descricao}
-                      {m.categorias?.nome && <span className="text-textsecondary text-xs">· {m.categorias.nome}</span>}
+                  <td className="px-3 md:px-6 py-3 md:py-4 text-textprimary">
+                    <div className="flex items-center gap-1 md:gap-2">
+                      <Icone size={14} className={corPorTipo[m.tipo]} />
+                      <span className="text-xs md:text-sm truncate max-w-[120px] md:max-w-none">{m.descricao}</span>
+                      {m.categorias?.nome && <span className="hidden md:inline text-textsecondary text-xs">· {m.categorias.nome}</span>}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-textsecondary text-sm">
+                  <td className="hidden md:table-cell px-6 py-4 text-textsecondary text-sm">
                     {m.tipo === 'transferencia' ? `${m.conta?.nome} → ${m.contaDestino?.nome}` : m.conta?.nome}
                   </td>
-                  <td className={`px-6 py-4 text-right font-medium ${corPorTipo[m.tipo]}`}>
+                  <td className={`px-3 md:px-6 py-3 md:py-4 text-right text-xs md:text-sm font-medium ${corPorTipo[m.tipo]}`}>
                     {m.tipo === 'entrada' ? '+' : m.tipo === 'saida' ? '-' : ''}{formatBRL(m.valor)}
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-3 md:px-6 py-3 md:py-4 text-right">
                     <div className="flex gap-2 justify-end">
                       <button onClick={() => handleEdit(m)} className="text-textsecondary hover:text-indigo transition-colors">
                         <Pencil size={15} />
@@ -314,8 +314,8 @@ export default function Movimentacoes() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 overflow-y-auto py-8">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-6">
               {editandoId ? 'Editar Movimentação' : 'Nova Movimentação'}
             </h2>

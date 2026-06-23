@@ -128,7 +128,7 @@ export default function Fixos() {
       </div>
 
       {/* Resumo do mês */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-2 md:gap-4 mb-6">
         <div className="bg-surface border border-border rounded-2xl p-5">
           <p className="text-textsecondary text-xs mb-1">Total mensal</p>
           <p className="font-display text-2xl font-bold text-red">{formatBRL(totalMensal)}</p>
@@ -147,11 +147,11 @@ export default function Fixos() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left px-6 py-4 text-textsecondary text-sm font-medium">Descrição</th>
-              <th className="text-center px-6 py-4 text-textsecondary text-sm font-medium">Dia</th>
-              <th className="text-right px-6 py-4 text-textsecondary text-sm font-medium">Valor</th>
-              <th className="text-center px-6 py-4 text-textsecondary text-sm font-medium">Status este mês</th>
-              <th className="px-6 py-4"></th>
+              <th className="text-left px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium">Descrição</th>
+              <th className="hidden md:table-cell text-center px-6 py-4 text-textsecondary text-sm font-medium">Dia</th>
+              <th className="text-right px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium">Valor</th>
+              <th className="text-center px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm font-medium">Status</th>
+              <th className="px-3 md:px-6 py-3 md:py-4"></th>
             </tr>
           </thead>
           <tbody>
@@ -161,10 +161,10 @@ export default function Fixos() {
               const Icone = cfg.icon
               return (
                 <tr key={f.id} className="border-b border-border/50 hover:bg-white/5 transition-colors">
-                  <td className="px-6 py-4 text-textprimary">{f.descricao}</td>
-                  <td className="px-6 py-4 text-center text-textsecondary text-sm">Dia {f.dia_vencimento}</td>
-                  <td className="px-6 py-4 text-right text-red font-medium">{formatBRL(f.valor)}</td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-3 md:px-6 py-3 md:py-4 text-textprimary text-sm">{f.descricao}</td>
+                  <td className="hidden md:table-cell px-6 py-4 text-center text-textsecondary text-sm">Dia {f.dia_vencimento}</td>
+                  <td className="px-3 md:px-6 py-3 md:py-4 text-right text-red font-medium text-sm">{formatBRL(f.valor)}</td>
+                  <td className="px-3 md:px-6 py-3 md:py-4 text-center">
                     <button onClick={() => handleToggleStatus(f.id)}
                       className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${cfg.bg} ${cfg.cor}`}>
                       <Icone size={12} />
@@ -192,8 +192,8 @@ export default function Fixos() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-6">
               {editandoId ? 'Editar Fixo' : 'Novo Fixo Recorrente'}
             </h2>

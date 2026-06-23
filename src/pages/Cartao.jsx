@@ -133,8 +133,8 @@ export default function Cartao() {
       </div>
 
       {showSetup && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-6">Cadastrar Cartão</h2>
             <div className="space-y-4">
               <div>
@@ -187,7 +187,7 @@ export default function Cartao() {
       </div>
 
       {cartoes.length > 1 && (
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
           {cartoes.map(c => (
             <button key={c.id}
               onClick={() => setCartaoSelecionadoId(c.id)}
@@ -312,8 +312,8 @@ export default function Cartao() {
 
       {/* Modal: Definir saldo inicial */}
       {showDefinirInicial && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-2">Saldo inicial da fatura</h2>
             <p className="text-textsecondary text-sm mb-6">
               Informe o valor total já acumulado nesta fatura antes de começar a usar o sistema.
@@ -339,8 +339,8 @@ export default function Cartao() {
 
       {/* Modal: Pagar fatura */}
       {showPagar && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-2">Pagar Fatura</h2>
             <p className="text-textsecondary text-sm mb-6">
               O valor será descontado da conta <strong className="text-textprimary">{cartao?.conta?.nome}</strong> e a fatura irá para o histórico.
@@ -368,8 +368,8 @@ export default function Cartao() {
 
       {/* Modal: Novo cartão */}
       {showNovoCartao && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-          <div className="bg-surface border border-border rounded-2xl p-8 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="font-display text-xl font-bold text-textprimary mb-6">Cadastrar Novo Cartão</h2>
             <div className="space-y-4">
               <div>
