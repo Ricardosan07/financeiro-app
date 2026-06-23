@@ -1,0 +1,27 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=DM+Sans:wght@400;500;600&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0F1117;
+  --color-surface: #1A1D27;
+  --color-border: #2A2D3A;
+  --color-green: #22C55E;
+  --color-yellow: #EAB308;
+  --color-red: #EF4444;
+  --color-indigo: #6366F1;
+  --color-textprimary: #F1F5F9;
+  --color-textsecondary: #64748B;
+
+  --font-display: "Sora", sans-serif;
+  --font-body: "DM Sans", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background-color: #0F1117;
+  color: #F1F5F9;
+  font-family: 'DM Sans', sans-serif;
+  margin: 0;
+}
