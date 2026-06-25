@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useCategorias } from '../hooks/useCategorias'
 import { useConfig } from '../contexts/ConfigContext'
 import { Plus, Trash2, Pencil, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft } from 'lucide-react'
+import FAB from '../components/FAB'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 const formatData = (d) => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')
@@ -245,7 +246,7 @@ export default function Movimentacoes() {
           <p className="text-textsecondary text-sm mt-1">Entradas, saídas e transferências</p>
         </div>
         <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Nova Movimentação
         </button>
       </div>
@@ -500,6 +501,7 @@ export default function Movimentacoes() {
           </div>
         </div>
       )}
+      <FAB onClick={() => setShowForm(true)} label="Nova Movimentação" />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Plus, Trash2, Pencil, Wallet, PiggyBank, TrendingUp } from 'lucide-react'
+import FAB from '../components/FAB'
 
 const tiposConta = ['corrente', 'poupanca', 'investimento', 'digital']
 const tipoLabel = { corrente: 'Conta Corrente', poupanca: 'Poupança', investimento: 'Investimento', digital: 'Carteira Digital' }
@@ -102,7 +103,7 @@ export default function Contas() {
           <p className="text-textsecondary text-sm mt-1">Saldo livre, reservas e patrimônio</p>
         </div>
         <button onClick={() => { setEditandoId(null); setForm(formVazio); setShowForm(true) }}
-          className="flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Nova Conta
         </button>
       </div>
@@ -282,6 +283,7 @@ export default function Contas() {
           </div>
         </div>
       )}
+      <FAB onClick={() => { setEditandoId(null); setForm(formVazio); setShowForm(true) }} label="Nova Conta" />
     </div>
   )
 }

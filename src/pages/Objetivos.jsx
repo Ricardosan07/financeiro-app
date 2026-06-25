@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Plus, Trash2, Pencil, Target, CheckCircle2 } from 'lucide-react'
+import FAB from '../components/FAB'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
 
@@ -103,7 +104,7 @@ export default function Objetivos() {
           <p className="text-textsecondary text-sm mt-1">Metas financeiras e sonhos a realizar</p>
         </div>
         <button onClick={() => { setEditandoId(null); setForm(vazio); setShowForm(true) }}
-          className="flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Novo Objetivo
         </button>
       </div>
@@ -248,6 +249,7 @@ export default function Objetivos() {
           </div>
         </div>
       )}
+      <FAB onClick={() => { setEditandoId(null); setForm(vazio); setShowForm(true) }} label="Novo Objetivo" />
     </div>
   )
 }

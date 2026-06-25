@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Plus, Trash2, Pencil, CheckCircle2, Circle, Bell, Calendar, DollarSign, Clock } from 'lucide-react'
+import FAB from '../components/FAB'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
 const formatData = (d) => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')
@@ -99,7 +100,7 @@ export default function Agenda() {
           <p className="text-textsecondary text-sm mt-1">Contas e compromissos para não esquecer</p>
         </div>
         <button onClick={() => { setEditandoId(null); setForm(vazio); setShowForm(true) }}
-          className="flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Novo Lembrete
         </button>
       </div>
@@ -250,6 +251,7 @@ export default function Agenda() {
           </div>
         </div>
       )}
+      <FAB onClick={() => { setEditandoId(null); setForm(vazio); setShowForm(true) }} label="Novo Lembrete" />
     </div>
   )
 }

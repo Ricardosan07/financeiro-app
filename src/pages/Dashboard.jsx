@@ -136,16 +136,18 @@ export default function Dashboard() {
       </div>
 
       {/* Projeção futura */}
-      <div className="grid grid-cols-3 gap-3 md:gap-4">
+      <div className="grid grid-cols-3 gap-2 md:gap-4">
         {[
-          { label: 'Daqui 30 dias', valor: saldo30 },
-          { label: 'Daqui 60 dias', valor: saldo60 },
-          { label: 'Daqui 90 dias', valor: saldo90 },
+          { label: '30 dias', valor: saldo30 },
+          { label: '60 dias', valor: saldo60 },
+          { label: '90 dias', valor: saldo90 },
         ].map(({ label, valor }) => (
-          <div key={label} className="bg-surface border border-border rounded-2xl p-5">
-            <p className="text-textsecondary text-xs mb-2">{label}</p>
-            <p className="font-display text-xl font-bold" style={{ color: valor !== null ? corSaldo(valor) : '#64748B' }}>
-              {valor !== null ? formatBRL(valor) : '—'}
+          <div key={label} className="bg-surface border border-border rounded-2xl p-3 md:p-5">
+            <p className="text-textsecondary text-xs mb-1">{label}</p>
+            <p className="font-display font-bold leading-tight text-sm md:text-xl" style={{ color: valor !== null ? corSaldo(valor) : '#64748B' }}>
+              {valor !== null
+                ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(valor)
+                : '—'}
             </p>
           </div>
         ))}

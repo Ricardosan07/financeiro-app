@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useCategorias } from '../hooks/useCategorias'
 import { Plus, Trash2, Pencil } from 'lucide-react'
+import FAB from '../components/FAB'
 
 const coresDisponiveis = ['#6366F1', '#22C55E', '#EF4444', '#EAB308', '#EC4899', '#06B6D4', '#8B5CF6', '#64748B']
 
@@ -67,7 +68,7 @@ export default function Categorias() {
           <p className="text-textsecondary text-sm mt-1">Organize suas entradas e saídas</p>
         </div>
         <button onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Nova Categoria
         </button>
       </div>
@@ -168,6 +169,7 @@ export default function Categorias() {
           </div>
         </div>
       )}
+      <FAB onClick={() => setShowForm(true)} label="Nova Categoria" />
     </div>
   )
 }

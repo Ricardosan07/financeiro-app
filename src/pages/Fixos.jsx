@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Plus, Trash2, Pencil, Clock, PiggyBank, CheckCircle2 } from 'lucide-react'
+import FAB from '../components/FAB'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
@@ -122,24 +123,30 @@ export default function Fixos() {
           <p className="text-textsecondary text-sm mt-1">Gastos que se repetem todo mês</p>
         </div>
         <button onClick={() => { setEditandoId(null); setForm({ descricao: '', valor: '', dia_vencimento: '1', data_inicio: new Date().toISOString().split('T')[0], data_fim: '' }); setShowForm(true) }}
-          className="flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Novo Fixo
         </button>
       </div>
 
       {/* Resumo do mês */}
       <div className="grid grid-cols-3 gap-2 md:gap-4 mb-6">
-        <div className="bg-surface border border-border rounded-2xl p-5">
-          <p className="text-textsecondary text-xs mb-1">Total mensal</p>
-          <p className="font-display text-2xl font-bold text-red">{formatBRL(totalMensal)}</p>
+        <div className="bg-surface border border-border rounded-2xl p-3 md:p-5">
+          <p className="text-textsecondary text-xs mb-1">Total</p>
+          <p className="font-display text-sm md:text-2xl font-bold text-red leading-tight">
+            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalMensal)}
+          </p>
         </div>
-        <div className="bg-surface border border-indigo/20 rounded-2xl p-5">
+        <div className="bg-surface border border-indigo/20 rounded-2xl p-3 md:p-5">
           <p className="text-textsecondary text-xs mb-1">Reservado</p>
-          <p className="font-display text-2xl font-bold text-indigo">{formatBRL(totalReservado)}</p>
+          <p className="font-display text-sm md:text-2xl font-bold text-indigo leading-tight">
+            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalReservado)}
+          </p>
         </div>
-        <div className="bg-surface border border-green/20 rounded-2xl p-5">
-          <p className="text-textsecondary text-xs mb-1">Pago este mês</p>
-          <p className="font-display text-2xl font-bold text-green">{formatBRL(totalPago)}</p>
+        <div className="bg-surface border border-green/20 rounded-2xl p-3 md:p-5">
+          <p className="text-textsecondary text-xs mb-1">Pago</p>
+          <p className="font-display text-sm md:text-2xl font-bold text-green leading-tight">
+            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(totalPago)}
+          </p>
         </div>
       </div>
 
@@ -244,6 +251,7 @@ export default function Fixos() {
           </div>
         </div>
       )}
+      <FAB onClick={() => { setEditandoId(null); setForm({ descricao: '', valor: '', dia_vencimento: '1', data_inicio: new Date().toISOString().split('T')[0], data_fim: '' }); setShowForm(true) }} label="Novo Fixo" />
     </div>
   )
 }

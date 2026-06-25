@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Plus, Trash2, Pencil } from 'lucide-react'
+import FAB from '../components/FAB'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -130,7 +131,7 @@ export default function Parcelas() {
           <p className="text-textsecondary text-sm mt-1">Compras parceladas em andamento</p>
         </div>
         <button onClick={() => { setEditandoId(null); setForm(vazio); setShowForm(true) }}
-          className="flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
+          className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Nova Parcela
         </button>
       </div>
@@ -297,6 +298,7 @@ export default function Parcelas() {
           </div>
         </div>
       )}
+      <FAB onClick={() => { setEditandoId(null); setForm(vazio); setShowForm(true) }} label="Nova Parcela" />
     </div>
   )
 }
