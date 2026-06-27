@@ -138,10 +138,20 @@ export default function Movimentacoes() {
             if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) - payload.valor }).eq('id', payload.conta_id)
           }
         } else if (payload.tipo === 'transferencia') {
-          const origem = contas.find(c => c.id === payload.conta_id)
-          const destino = contas.find(c => c.id === payload.conta_destino_id)
-          if (origem) await supabase.from('contas').update({ saldo_atual: Number(origem.saldo_atual) - payload.valor }).eq('id', payload.conta_id)
-          if (destino) await supabase.from('contas').update({ saldo_atual: Number(destino.saldo_atual) + payload.valor }).eq('id', payload.conta_destino_id)
+          const { data: contaOrigem } = await supabase
+            .from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
+          const { data: contaDestino } = await supabase
+            .from('contas').select('saldo_atual').eq('id', payload.conta_destino_id).single()
+          if (contaOrigem) {
+            await supabase.from('contas')
+              .update({ saldo_atual: Number(contaOrigem.saldo_atual) - payload.valor })
+              .eq('id', payload.conta_id)
+          }
+          if (contaDestino) {
+            await supabase.from('contas')
+              .update({ saldo_atual: Number(contaDestino.saldo_atual) + payload.valor })
+              .eq('id', payload.conta_destino_id)
+          }
         }
       }
     }
@@ -222,10 +232,20 @@ export default function Movimentacoes() {
         const conta = contas.find(c => c.id === m.conta_id)
         if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) + Number(m.valor) }).eq('id', m.conta_id)
       } else if (m.tipo === 'transferencia') {
-        const origem = contas.find(c => c.id === m.conta_id)
-        const destino = contas.find(c => c.id === m.conta_destino_id)
-        if (origem) await supabase.from('contas').update({ saldo_atual: Number(origem.saldo_atual) + Number(m.valor) }).eq('id', m.conta_id)
-        if (destino) await supabase.from('contas').update({ saldo_atual: Number(destino.saldo_atual) - Number(m.valor) }).eq('id', m.conta_destino_id)
+        const { data: contaOrigem } = await supabase
+          .from('contas').select('saldo_atual').eq('id', m.conta_id).single()
+        const { data: contaDestino } = await supabase
+          .from('contas').select('saldo_atual').eq('id', m.conta_destino_id).single()
+        if (contaOrigem) {
+          await supabase.from('contas')
+            .update({ saldo_atual: Number(contaOrigem.saldo_atual) + Number(m.valor) })
+            .eq('id', m.conta_id)
+        }
+        if (contaDestino) {
+          await supabase.from('contas')
+            .update({ saldo_atual: Number(contaDestino.saldo_atual) - Number(m.valor) })
+            .eq('id', m.conta_destino_id)
+        }
       }
     }
     fetchMovimentacoes()
