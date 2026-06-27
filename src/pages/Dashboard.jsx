@@ -47,7 +47,7 @@ const corDica = {
 
 export default function Dashboard() {
   const { projecao, saldoInicial, loading: loadingProjecao } = useProjecao(90)
-  const { gastosPorCategoria, historicoSaldo, reservas, objetivosAtivos, dica, loading: loadingData, recarregar } = useDashboardData()
+  const { gastosPorCategoria, historicoSaldo, reservas, objetivosAtivos, dica, faturaInfo, saldosContas, loading: loadingData, recarregar } = useDashboardData()
   const { threshold_saldo_baixo, nome } = useConfig()
 
   const saldo30 = saldoEmDias(projecao, 30)
@@ -134,6 +134,40 @@ export default function Dashboard() {
           <p className="text-textsecondary text-xs mt-2">sem comprometer os próx. 30 dias</p>
         </div>
       </div>
+
+      {/* Saldos das contas principais */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="bg-surface border border-border rounded-2xl p-4">
+          <p className="text-textsecondary text-xs mb-1">Nubank</p>
+          <p className={`font-display text-lg font-bold ${Number(saldosContas.nubank) >= 0 ? 'text-textprimary' : 'text-red'}`}>
+            {formatBRL(saldosContas.nubank)}
+          </p>
+          <p className="text-textsecondary text-xs mt-0.5">Conta principal</p>
+        </div>
+        <div className="bg-surface border border-border rounded-2xl p-4">
+          <p className="text-textsecondary text-xs mb-1">Banco do Brasil</p>
+          <p className={`font-display text-lg font-bold ${Number(saldosContas.bb) >= 0 ? 'text-textprimary' : 'text-red'}`}>
+            {formatBRL(saldosContas.bb)}
+          </p>
+          <p className="text-textsecondary text-xs mt-0.5">Débitos automáticos</p>
+        </div>
+      </div>
+
+      {/* Fatura do cartão */}
+      {faturaInfo.total > 0 && (
+        <div className="bg-red/10 border border-red/20 rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-textsecondary text-xs mb-1">Fatura {faturaInfo.cartao} (em aberto)</p>
+              <p className="font-display text-2xl font-bold text-red">{formatBRL(faturaInfo.total)}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-textsecondary text-xs">Fecha dia 27</p>
+              <a href="/cartao" className="text-indigo text-xs hover:underline">Ver fatura →</a>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Projeção futura */}
       <div className="grid grid-cols-3 gap-2 md:gap-4">

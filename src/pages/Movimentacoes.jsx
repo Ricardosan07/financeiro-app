@@ -65,6 +65,7 @@ export default function Movimentacoes() {
 
   const handleSave = async () => {
     setLoading(true)
+
     const payload = {
       data: form.recorrente ? new Date().toISOString().split('T')[0] : form.data,
       descricao: form.descricao,
@@ -79,80 +80,16 @@ export default function Movimentacoes() {
     }
 
     let error
-    let result
+    let novoLancamentoId = null
+
     if (editandoId) {
-      result = await supabase.from('lancamentos').update(payload).eq('id', editandoId)
+      const result = await supabase.from('lancamentos').update(payload).eq('id', editandoId)
       error = result.error
     } else {
-      result = await supabase.from('lancamentos').insert({ ...payload, user_id: user.id }).select()
+      const result = await supabase.from('lancamentos').insert({ ...payload, user_id: user.id }).select('id')
       error = result.error
-
-      // Se não for recorrente, atualiza saldo das contas na hora
-      if (!error && !payload.recorrente) {
-        if (payload.tipo === 'entrada') {
-          const conta = contas.find(c => c.id === payload.conta_id)
-          if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) + payload.valor }).eq('id', payload.conta_id)
-        } else if (payload.tipo === 'saida') {
-          if (payload.forma_pagamento === 'credito') {
-            // Crédito: NÃO desconta saldo — vincula à fatura do cartão
-            const { data: cartoes } = await supabase.from('cartoes').select('*').eq('user_id', user.id).eq('ativo', true).limit(1)
-            if (cartoes && cartoes.length > 0) {
-              const cartao = cartoes[0]
-              const dt = new Date(payload.data + 'T00:00:00')
-              const dia = dt.getDate()
-              let mes = dt.getMonth() + 1
-              let ano = dt.getFullYear()
-              if (dia > cartao.dia_fechamento) {
-                mes += 1
-                if (mes > 12) { mes = 1; ano += 1 }
-              }
-              const { data: faturas } = await supabase
-                .from('faturas')
-                .select('id')
-                .eq('cartao_id', cartao.id)
-                .eq('mes', mes)
-                .eq('ano', ano)
-                .eq('status', 'aberta')
-                .limit(1)
-
-              let faturaId = faturas?.[0]?.id
-              if (!faturaId) {
-                const { data: novaFatura } = await supabase.from('faturas').insert({
-                  user_id: user.id,
-                  cartao_id: cartao.id,
-                  mes, ano, status: 'aberta', valor_inicial: 0
-                }).select()
-                faturaId = novaFatura?.[0]?.id
-              }
-
-              if (faturaId && result?.data?.[0]?.id) {
-                await supabase.from('lancamentos').update({
-                  cartao_id: cartao.id,
-                  fatura_id: faturaId
-                }).eq('id', result.data[0].id)
-              }
-            }
-          } else {
-            // Débito/Pix/Dinheiro: desconta normalmente
-            const conta = contas.find(c => c.id === payload.conta_id)
-            if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) - payload.valor }).eq('id', payload.conta_id)
-          }
-        } else if (payload.tipo === 'transferencia') {
-          const { data: contaOrigem } = await supabase
-            .from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
-          const { data: contaDestino } = await supabase
-            .from('contas').select('saldo_atual').eq('id', payload.conta_destino_id).single()
-          if (contaOrigem) {
-            await supabase.from('contas')
-              .update({ saldo_atual: Number(contaOrigem.saldo_atual) - payload.valor })
-              .eq('id', payload.conta_id)
-          }
-          if (contaDestino) {
-            await supabase.from('contas')
-              .update({ saldo_atual: Number(contaDestino.saldo_atual) + payload.valor })
-              .eq('id', payload.conta_destino_id)
-          }
-        }
+      if (!error && result.data?.length > 0) {
+        novoLancamentoId = result.data[0].id
       }
     }
 
@@ -162,13 +99,73 @@ export default function Movimentacoes() {
       return
     }
 
-    const foiEntrada = payload.tipo === 'entrada' && !payload.recorrente
+    // Atualizar saldos das contas
+    if (!editandoId && !payload.recorrente) {
+      if (payload.tipo === 'entrada') {
+        const { data: conta } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
+        if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) + payload.valor }).eq('id', payload.conta_id)
+
+      } else if (payload.tipo === 'saida') {
+        if (payload.forma_pagamento === 'credito') {
+          if (novoLancamentoId) {
+            const { data: cartoes } = await supabase
+              .from('cartoes').select('*').eq('user_id', user.id).eq('ativo', true).limit(1)
+
+            if (cartoes && cartoes.length > 0) {
+              const cartao = cartoes[0]
+              const dt = new Date(payload.data + 'T00:00:00')
+              const dia = dt.getDate()
+              let mes = dt.getMonth() + 1
+              let ano = dt.getFullYear()
+
+              if (dia > cartao.dia_fechamento) {
+                mes += 1
+                if (mes > 12) { mes = 1; ano += 1 }
+              }
+
+              const { data: faturaExistente } = await supabase
+                .from('faturas')
+                .select('id, status')
+                .eq('cartao_id', cartao.id)
+                .eq('mes', mes)
+                .eq('ano', ano)
+                .single()
+
+              let faturaId = faturaExistente?.id
+
+              if (!faturaId) {
+                const { data: novaFatura } = await supabase
+                  .from('faturas')
+                  .insert({ user_id: user.id, cartao_id: cartao.id, mes, ano, status: 'aberta', valor_inicial: 0 })
+                  .select('id')
+                if (novaFatura?.length > 0) faturaId = novaFatura[0].id
+              }
+
+              if (faturaId) {
+                await supabase.from('lancamentos').update({ cartao_id: cartao.id, fatura_id: faturaId }).eq('id', novoLancamentoId)
+              }
+            }
+          }
+        } else {
+          const { data: conta } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
+          if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) - payload.valor }).eq('id', payload.conta_id)
+        }
+
+      } else if (payload.tipo === 'transferencia') {
+        const { data: contaOrigem } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
+        const { data: contaDestino } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_destino_id).single()
+        if (contaOrigem) await supabase.from('contas').update({ saldo_atual: Number(contaOrigem.saldo_atual) - payload.valor }).eq('id', payload.conta_id)
+        if (contaDestino) await supabase.from('contas').update({ saldo_atual: Number(contaDestino.saldo_atual) + payload.valor }).eq('id', payload.conta_destino_id)
+      }
+    }
+
+    const foiEntrada = payload.tipo === 'entrada' && !payload.recorrente && payload.valor >= 500
     resetForm()
     fetchMovimentacoes()
     fetchContas()
     setLoading(false)
 
-    if (foiEntrada && payload.valor >= 500) {
+    if (foiEntrada) {
       const { data: reservasComMeta } = await supabase
         .from('contas')
         .select('nome, saldo_atual, meta_valor')
@@ -405,7 +402,7 @@ export default function Movimentacoes() {
                     {formasPagamento.map(f => <option key={f.valor} value={f.valor}>{f.label}</option>)}
                   </select>
                   {form.forma_pagamento === 'credito' && (
-                    <p className="text-yellow text-xs mt-2">⚠ Módulo de fatura ainda não disponível — esta saída desconta o saldo direto por enquanto.</p>
+                    <p className="text-indigo text-xs mt-2">💳 Compra vinculada à fatura do cartão — não desconta saldo da conta.</p>
                   )}
                 </div>
               )}

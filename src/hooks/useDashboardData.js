@@ -9,6 +9,8 @@ export function useDashboardData() {
   const [reservas, setReservas] = useState([])
   const [objetivosAtivos, setObjetivosAtivos] = useState([])
   const [dica, setDica] = useState(null)
+  const [faturaInfo, setFaturaInfo] = useState({ total: 0, cartao: 'Cartão' })
+  const [saldosContas, setSaldosContas] = useState({ nubank: 0, bb: 0 })
   const [loading, setLoading] = useState(true)
 
   const hoje = new Date()
@@ -114,7 +116,38 @@ export function useDashboardData() {
 
     setObjetivosAtivos(objetivosData || [])
 
-    // 5. Gerar dica contextual
+    // 5. Fatura atual do cartão
+    const { data: faturaAtual } = await supabase
+      .from('faturas')
+      .select('*, cartao:cartao_id(nome)')
+      .eq('user_id', user.id)
+      .eq('status', 'aberta')
+      .order('criado_em', { ascending: false })
+      .limit(1)
+
+    let totalFaturaAtual = 0
+    if (faturaAtual && faturaAtual.length > 0) {
+      const f = faturaAtual[0]
+      totalFaturaAtual = Number(f.valor_inicial || 0)
+      const { data: comprasFatura } = await supabase
+        .from('lancamentos').select('valor').eq('fatura_id', f.id)
+      totalFaturaAtual += (comprasFatura || []).reduce((s, c) => s + Number(c.valor), 0)
+    }
+    setFaturaInfo({ total: totalFaturaAtual, cartao: faturaAtual?.[0]?.cartao?.nome || 'Cartão' })
+
+    // 6. Saldos das contas principais (Nubank e BB)
+    const { data: contasPrincipais } = await supabase
+      .from('contas')
+      .select('nome, saldo_atual, categoria_conta')
+      .eq('user_id', user.id)
+      .eq('ativo', true)
+      .in('categoria_conta', ['livre', 'reserva'])
+
+    const nubank = contasPrincipais?.find(c => c.nome.toLowerCase().includes('nubank'))
+    const bb = contasPrincipais?.find(c => c.nome.toLowerCase().includes('bb') || c.nome.toLowerCase().includes('brasil'))
+    setSaldosContas({ nubank: nubank?.saldo_atual || 0, bb: bb?.saldo_atual || 0 })
+
+    // 7. Gerar dica contextual
     const dicaGerada = await gerarDica(user.id, {
       saldoAtual,
       gastosPorCategoria: categoriasList,
@@ -240,5 +273,5 @@ export function useDashboardData() {
 
   useEffect(() => { if (user) carregar() }, [user])
 
-  return { gastosPorCategoria, historicoSaldo, reservas, objetivosAtivos, dica, loading, recarregar: carregar }
+  return { gastosPorCategoria, historicoSaldo, reservas, objetivosAtivos, dica, faturaInfo, saldosContas, loading, recarregar: carregar }
 }

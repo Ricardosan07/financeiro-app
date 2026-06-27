@@ -65,24 +65,56 @@ export function useProjecao(diasFuturos = 90) {
       .eq('user_id', user.id)
       .eq('ativo', true)
 
-    // Buscar fatura fechada do cartão para incluir como compromisso pendente na projeção
-    const { data: faturasFechadas } = await supabase
+    // Buscar faturas para incluir na projeção
+    const { data: todasFaturas } = await supabase
       .from('faturas')
-      .select('*, cartao:cartao_id(nome, conta_pagamento_id)')
+      .select('*, cartao:cartao_id(nome, conta_pagamento_id, dia_fechamento)')
       .eq('user_id', user.id)
-      .eq('status', 'fechada')
+      .in('status', ['aberta', 'fechada'])
 
     const amanha = new Date(hoje)
     amanha.setDate(amanha.getDate() + 1)
-    const amanhaStr = amanha.toISOString().split('T')[0]
 
-    const lancamentosFatura = (faturasFechadas || []).map(f => ({
-      data: amanhaStr,
-      descricao: `Fatura ${f.cartao?.nome || 'Cartão'} (a pagar)`,
-      valor: Number(f.valor_pago || 0),
-      tipo: 'saida',
-      contaOrigemCategoria: 'livre'
-    }))
+    const lancamentosFatura = []
+
+    for (const fatura of (todasFaturas || [])) {
+      let totalFatura = Number(fatura.valor_inicial || 0)
+
+      if (fatura.status === 'aberta') {
+        const { data: compras } = await supabase
+          .from('lancamentos')
+          .select('valor')
+          .eq('fatura_id', fatura.id)
+        totalFatura += (compras || []).reduce((s, c) => s + Number(c.valor), 0)
+      } else {
+        totalFatura = Number(fatura.valor_pago || fatura.valor_inicial || 0)
+      }
+
+      if (totalFatura <= 0) continue
+
+      let dataProjetada
+      if (fatura.status === 'fechada') {
+        dataProjetada = amanha.toISOString().split('T')[0]
+      } else {
+        const diaFechamento = fatura.cartao?.dia_fechamento || 27
+        const hojeRef = new Date()
+        let mesVenc = hojeRef.getMonth() + 1
+        let anoVenc = hojeRef.getFullYear()
+        if (hojeRef.getDate() >= diaFechamento) {
+          mesVenc += 1
+          if (mesVenc > 12) { mesVenc = 1; anoVenc += 1 }
+        }
+        dataProjetada = `${anoVenc}-${String(mesVenc).padStart(2, '0')}-${String(diaFechamento).padStart(2, '0')}`
+      }
+
+      lancamentosFatura.push({
+        data: dataProjetada,
+        descricao: `Fatura ${fatura.cartao?.nome || 'Cartão'} (${fatura.status === 'fechada' ? 'a pagar' : 'vencimento previsto'})`,
+        valor: totalFatura,
+        tipo: 'saida',
+        contaOrigemCategoria: 'livre'
+      })
+    }
 
     const todosLancamentosAvulsos = [...lancamentosAvulsos, ...lancamentosFatura]
 

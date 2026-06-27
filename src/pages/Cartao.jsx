@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useCartao } from '../hooks/useCartao'
-import { CreditCard, Plus, CheckCircle2, TrendingDown, TrendingUp, History, Lock, Pencil } from 'lucide-react'
+import { CreditCard, Plus, CheckCircle2, TrendingDown, TrendingUp, History, Lock, Pencil, X } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
@@ -13,6 +13,8 @@ export default function Cartao() {
   const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState(null)
   const { cartoes, cartao, faturaAberta, faturaFechada, historico, comprasAbertas, loading, recarregar } = useCartao(cartaoSelecionadoId)
 
+  const [editandoCompra, setEditandoCompra] = useState(null)
+  const [formCompra, setFormCompra] = useState({ descricao: '', valor: '', data: '' })
   const [showSetup, setShowSetup] = useState(false)
   const [showNovoCartao, setShowNovoCartao] = useState(false)
   const [showPagar, setShowPagar] = useState(false)
@@ -100,6 +102,35 @@ export default function Cartao() {
     recarregar()
     setSaving(false)
   }
+
+  const handleExcluirCompra = async (compra) => {
+    if (!confirm(`Excluir "${compra.descricao}" de ${formatBRL(compra.valor)}?`)) return
+    await supabase.from('lancamentos').delete().eq('id', compra.id)
+    recarregar()
+  }
+
+  const handleSalvarCompra = async () => {
+    if (!editandoCompra) return
+    setSaving(true)
+    await supabase.from('lancamentos').update({
+      descricao: formCompra.descricao,
+      valor: parseFloat(formCompra.valor),
+      data: formCompra.data
+    }).eq('id', editandoCompra.id)
+    setEditandoCompra(null)
+    recarregar()
+    setSaving(false)
+  }
+
+  useEffect(() => {
+    if (editandoCompra) {
+      setFormCompra({
+        descricao: editandoCompra.descricao,
+        valor: String(editandoCompra.valor),
+        data: editandoCompra.data
+      })
+    }
+  }, [editandoCompra])
 
   const calcularTotalFatura = (fatura) => {
     if (!fatura) return 0
@@ -276,14 +307,26 @@ export default function Cartao() {
           {comprasAbertas.length > 0 ? (
             <div className="space-y-2 mb-4">
               {comprasAbertas.map(c => (
-                <div key={c.id} className="flex items-center justify-between py-2 border-b border-border/40">
-                  <div>
-                    <p className="text-sm text-textprimary">{c.descricao}</p>
+                <div key={c.id} className="flex items-center justify-between py-2 border-b border-border/40 gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-textprimary truncate">{c.descricao}</p>
                     <p className="text-xs text-textsecondary">
                       {new Date(c.data + 'T00:00:00').toLocaleDateString('pt-BR')}
                     </p>
                   </div>
-                  <p className="text-red font-medium text-sm">{formatBRL(c.valor)}</p>
+                  <div className="flex items-center gap-3 flex-shrink-0">
+                    <p className="text-red font-medium text-sm">{formatBRL(c.valor)}</p>
+                    <button
+                      onClick={() => setEditandoCompra(c)}
+                      className="text-textsecondary hover:text-indigo transition-colors">
+                      <Pencil size={13} />
+                    </button>
+                    <button
+                      onClick={() => handleExcluirCompra(c)}
+                      className="text-textsecondary hover:text-red transition-colors">
+                      <X size={13} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -426,6 +469,53 @@ export default function Cartao() {
               <button onClick={handlePagarFatura} disabled={saving}
                 className="flex-1 bg-green hover:bg-green/90 text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50">
                 {saving ? 'Processando...' : 'Confirmar Pagamento'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar compra da fatura */}
+      {editandoCompra && (
+        <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
+          <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md">
+            <h2 className="font-display text-xl font-bold text-textprimary mb-6">Editar Compra</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="text-textsecondary text-sm mb-1 block">Descrição</label>
+                <input
+                  value={formCompra.descricao}
+                  onChange={e => setFormCompra({ ...formCompra, descricao: e.target.value })}
+                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-textsecondary text-sm mb-1 block">Valor (R$)</label>
+                  <input
+                    type="number"
+                    value={formCompra.valor}
+                    onChange={e => setFormCompra({ ...formCompra, valor: e.target.value })}
+                    className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo"
+                  />
+                </div>
+                <div>
+                  <label className="text-textsecondary text-sm mb-1 block">Data da compra</label>
+                  <input
+                    type="date"
+                    value={formCompra.data}
+                    onChange={e => setFormCompra({ ...formCompra, data: e.target.value })}
+                    className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setEditandoCompra(null)}
+                className="flex-1 border border-border text-textsecondary py-3 rounded-xl text-sm">Cancelar</button>
+              <button onClick={handleSalvarCompra} disabled={saving}
+                className="flex-1 bg-indigo text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50">
+                {saving ? 'Salvando...' : 'Atualizar'}
               </button>
             </div>
           </div>
