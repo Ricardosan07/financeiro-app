@@ -33,7 +33,8 @@ export default function Movimentacoes() {
     data: new Date().toISOString().split('T')[0],
     descricao: '', categoria_id: '', valor: '', tipo: 'saida',
     forma_pagamento: 'pix', conta_id: '', conta_destino_id: '',
-    recorrente: false, dia_recorrencia: '15'
+    recorrente: false, dia_recorrencia: '15',
+    num_parcelas: '1'
   }
   const [form, setForm] = useState(vazio)
 
@@ -106,6 +107,7 @@ export default function Movimentacoes() {
         if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) + payload.valor }).eq('id', payload.conta_id)
 
       } else if (payload.tipo === 'saida') {
+        // Crédito: NÃO desconta saldo — vincula à fatura e cria parcelas se necessário
         if (payload.forma_pagamento === 'credito') {
           if (novoLancamentoId) {
             const { data: cartoes } = await supabase
@@ -123,26 +125,44 @@ export default function Movimentacoes() {
                 if (mes > 12) { mes = 1; ano += 1 }
               }
 
+              // Buscar ou criar fatura do mês da compra
               const { data: faturaExistente } = await supabase
-                .from('faturas')
-                .select('id, status')
-                .eq('cartao_id', cartao.id)
-                .eq('mes', mes)
-                .eq('ano', ano)
-                .single()
+                .from('faturas').select('id').eq('cartao_id', cartao.id).eq('mes', mes).eq('ano', ano).single()
 
               let faturaId = faturaExistente?.id
-
               if (!faturaId) {
                 const { data: novaFatura } = await supabase
-                  .from('faturas')
-                  .insert({ user_id: user.id, cartao_id: cartao.id, mes, ano, status: 'aberta', valor_inicial: 0 })
-                  .select('id')
+                  .from('faturas').insert({ user_id: user.id, cartao_id: cartao.id, mes, ano, status: 'aberta', valor_inicial: 0 }).select('id')
                 if (novaFatura?.length > 0) faturaId = novaFatura[0].id
               }
 
               if (faturaId) {
                 await supabase.from('lancamentos').update({ cartao_id: cartao.id, fatura_id: faturaId }).eq('id', novoLancamentoId)
+              }
+
+              // Se parcelado (> 1x), criar parcela no módulo de Parcelas
+              const numParcelas = parseInt(form.num_parcelas) || 1
+              if (numParcelas > 1) {
+                const valorParcela = payload.valor / numParcelas
+                const totalMesesOffset = (mes - 1) + (numParcelas - 1)
+                const mesFim = (totalMesesOffset % 12) + 1
+                const anoFim = ano + Math.floor(totalMesesOffset / 12)
+
+                await supabase.from('parcelas').insert({
+                  user_id: user.id,
+                  descricao: payload.descricao,
+                  valor_total: payload.valor,
+                  num_parcelas: numParcelas,
+                  valor_parcela: valorParcela,
+                  mes_inicio: mes,
+                  ano_inicio: ano,
+                  mes_fim: mesFim,
+                  ano_fim: anoFim,
+                  dia_pagamento: cartao.dia_fechamento || 1,
+                  forma: 'cartao',
+                  cartao_id: cartao.id,
+                  ativo: true
+                })
               }
             }
           }
@@ -395,16 +415,59 @@ export default function Movimentacoes() {
               )}
 
               {form.tipo === 'saida' && (
-                <div>
-                  <label className="text-textsecondary text-sm mb-1 block">Forma de pagamento</label>
-                  <select value={form.forma_pagamento} onChange={e => setForm({ ...form, forma_pagamento: e.target.value })}
-                    className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo">
-                    {formasPagamento.map(f => <option key={f.valor} value={f.valor}>{f.label}</option>)}
-                  </select>
+                <>
+                  <div>
+                    <label className="text-textsecondary text-sm mb-1 block">Forma de pagamento</label>
+                    <select value={form.forma_pagamento} onChange={e => setForm({ ...form, forma_pagamento: e.target.value, num_parcelas: '1' })}
+                      className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo">
+                      {formasPagamento.map(f => <option key={f.valor} value={f.valor}>{f.label}</option>)}
+                    </select>
+                  </div>
+
                   {form.forma_pagamento === 'credito' && (
-                    <p className="text-indigo text-xs mt-2">💳 Compra vinculada à fatura do cartão — não desconta saldo da conta.</p>
+                    <div>
+                      <label className="text-textsecondary text-sm mb-1 block">Número de parcelas</label>
+                      <div className="flex gap-2 flex-wrap">
+                        {['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].map(n => (
+                          <button
+                            key={n}
+                            type="button"
+                            onClick={() => setForm({ ...form, num_parcelas: n })}
+                            className={`w-10 h-10 rounded-xl text-sm font-medium transition-colors ${
+                              form.num_parcelas === n
+                                ? 'bg-indigo text-white'
+                                : 'bg-bg border border-border text-textsecondary hover:border-indigo'
+                            }`}
+                          >
+                            {n}
+                          </button>
+                        ))}
+                        <input
+                          type="number"
+                          min="1"
+                          max="60"
+                          placeholder="+"
+                          className="w-14 h-10 rounded-xl text-sm text-center bg-bg border border-border text-textsecondary focus:outline-none focus:border-indigo"
+                          onChange={e => setForm({ ...form, num_parcelas: e.target.value })}
+                        />
+                      </div>
+                      {parseInt(form.num_parcelas) > 1 && form.valor && (
+                        <div className="mt-2 bg-indigo/10 border border-indigo/20 rounded-xl px-4 py-3">
+                          <p className="text-textsecondary text-xs">Valor por parcela</p>
+                          <p className="text-indigo font-display font-bold text-lg">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parseFloat(form.valor) / parseInt(form.num_parcelas))}
+                          </p>
+                          <p className="text-textsecondary text-xs mt-1">
+                            Uma parcela entra na fatura deste mês. As demais entram nos meses seguintes.
+                          </p>
+                        </div>
+                      )}
+                      {parseInt(form.num_parcelas) === 1 && (
+                        <p className="text-textsecondary text-xs mt-2">💳 À vista no crédito — entra na fatura deste mês.</p>
+                      )}
+                    </div>
                   )}
-                </div>
+                </>
               )}
 
               <div>
