@@ -6,19 +6,17 @@ export function useCartao(cartaoIdSelecionado = null) {
   const { user } = useAuth()
   const [cartoes, setCartoes] = useState([])
   const [cartao, setCartao] = useState(null)
-  const [faturaAberta, setFaturaAberta] = useState(null)
-  const [faturaFechada, setFaturaFechada] = useState(null)
+  const [faturaAtual, setFaturaAtual] = useState(null)
+  const [comprasFatura, setComprasFatura] = useState([])
   const [historico, setHistorico] = useState([])
-  const [comprasAbertas, setComprasAbertas] = useState([])
   const [loading, setLoading] = useState(true)
 
   const hoje = new Date()
 
-  const getMesFatura = (dataCompra, diaFechamento) => {
-    const dt = new Date(dataCompra + 'T00:00:00')
-    const dia = dt.getDate()
-    let mes = dt.getMonth() + 1
-    let ano = dt.getFullYear()
+  const getMesFaturaAtual = (diaFechamento) => {
+    const dia = hoje.getDate()
+    let mes = hoje.getMonth() + 1
+    let ano = hoje.getFullYear()
     if (dia > diaFechamento) {
       mes += 1
       if (mes > 12) { mes = 1; ano += 1 }
@@ -26,79 +24,84 @@ export function useCartao(cartaoIdSelecionado = null) {
     return { mes, ano }
   }
 
-  const carregarCartoes = async () => {
-    const { data } = await supabase
-      .from('cartoes')
-      .select('*, conta:conta_pagamento_id(nome, saldo_atual)')
-      .eq('user_id', user.id)
-      .eq('ativo', true)
-    setCartoes(data || [])
-    return data || []
+  const getVencimento = (mes, ano) => {
+    let mesVenc = mes + 1
+    let anoVenc = ano
+    if (mesVenc > 12) { mesVenc = 1; anoVenc += 1 }
+    return `05/${String(mesVenc).padStart(2, '0')}/${anoVenc}`
   }
 
-  const carregarFaturas = async (c) => {
-    if (!c) return
-
-    const { mes: mesAtual, ano: anoAtual } = getMesFatura(
-      hoje.toISOString().split('T')[0],
-      c.dia_fechamento
-    )
-
-    const { data: todasFaturas } = await supabase
-      .from('faturas')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('cartao_id', c.id)
-      .order('ano', { ascending: false })
-      .order('mes', { ascending: false })
-
-    const faturas = todasFaturas || []
-
-    let fAberta = faturas.find(f => f.mes === mesAtual && f.ano === anoAtual && f.status === 'aberta')
-    if (!fAberta) {
-      const { data: novaFatura } = await supabase
-        .from('faturas')
-        .upsert({
-          user_id: user.id,
-          cartao_id: c.id,
-          mes: mesAtual,
-          ano: anoAtual,
-          status: 'aberta',
-          valor_inicial: 0
-        }, { onConflict: 'cartao_id,mes,ano' })
-        .select()
-      fAberta = novaFatura?.[0] || null
-    }
-
-    setFaturaAberta(fAberta)
-    setFaturaFechada(faturas.find(f => f.status === 'fechada') || null)
-    setHistorico(faturas.filter(f => f.status === 'paga'))
-
-    if (fAberta) {
-      const { data: compras } = await supabase
-        .from('lancamentos')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('fatura_id', fAberta.id)
-        .order('data', { ascending: false })
-      setComprasAbertas(compras || [])
-    } else {
-      setComprasAbertas([])
-    }
+  const getFechamento = (diaFechamento, mes, ano) => {
+    return `${String(diaFechamento).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${ano}`
   }
 
   const carregar = async () => {
     setLoading(true)
-    const lista = await carregarCartoes()
-    const alvo = cartaoIdSelecionado
-      ? lista.find(c => c.id === cartaoIdSelecionado)
-      : lista[0]
-    setCartao(alvo || null)
-    if (alvo) await carregarFaturas(alvo)
+
+    const { data: listaCartoes } = await supabase
+      .from('cartoes')
+      .select('*, conta:conta_pagamento_id(nome, saldo_atual)')
+      .eq('user_id', user.id)
+      .eq('ativo', true)
+
+    setCartoes(listaCartoes || [])
+
+    const cartaoAlvo = cartaoIdSelecionado
+      ? listaCartoes?.find(c => c.id === cartaoIdSelecionado)
+      : listaCartoes?.[0]
+
+    if (!cartaoAlvo) { setLoading(false); return }
+    setCartao(cartaoAlvo)
+
+    const { mes, ano } = getMesFaturaAtual(cartaoAlvo.dia_fechamento)
+
+    let { data: fatura } = await supabase
+      .from('faturas')
+      .select('*')
+      .eq('cartao_id', cartaoAlvo.id)
+      .eq('mes', mes)
+      .eq('ano', ano)
+      .single()
+
+    if (!fatura) {
+      const { data: novaFatura } = await supabase
+        .from('faturas')
+        .upsert({ user_id: user.id, cartao_id: cartaoAlvo.id, mes, ano, status: 'aberta', valor_inicial: 0 }, { onConflict: 'cartao_id,mes,ano' })
+        .select()
+      fatura = novaFatura?.[0] || null
+    }
+
+    if (fatura) {
+      fatura.vencimento = getVencimento(mes, ano)
+      fatura.fechamento = getFechamento(cartaoAlvo.dia_fechamento, mes, ano)
+
+      const { data: compras } = await supabase
+        .from('lancamentos')
+        .select('*')
+        .eq('fatura_id', fatura.id)
+        .order('data', { ascending: false })
+
+      const totalCompras = (compras || []).reduce((s, c) => s + Number(c.valor), 0)
+      fatura.total = Number(fatura.valor_inicial || 0) + totalCompras
+
+      setFaturaAtual(fatura)
+      setComprasFatura(compras || [])
+    }
+
+    const { data: hist } = await supabase
+      .from('faturas')
+      .select('*')
+      .eq('cartao_id', cartaoAlvo.id)
+      .in('status', ['paga', 'fechada'])
+      .order('ano', { ascending: false })
+      .order('mes', { ascending: false })
+      .limit(6)
+
+    setHistorico(hist || [])
     setLoading(false)
   }
 
   useEffect(() => { if (user) carregar() }, [user, cartaoIdSelecionado])
 
-  return { cartoes, cartao, faturaAberta, faturaFechada, historico, comprasAbertas, loading, recarregar: carregar, getMesFatura }
+  return { cartoes, cartao, faturaAtual, comprasFatura, historico, loading, recarregar: carregar }
 }

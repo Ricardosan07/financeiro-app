@@ -30,28 +30,39 @@ export function useProjecao(diasFuturos = 90) {
     const dataInicioStr = hoje.toISOString().split('T')[0]
     const dataFimStr = fim.toISOString().split('T')[0]
 
-    // Buscar TODOS os lançamentos (não filtrar por data ainda, pois recorrentes não têm data fixa)
-    const { data: todosLancamentos } = await supabase
+    // Hoje e passado já estão contabilizados no saldo real — buscar só lançamentos futuros
+    const amanha = new Date(hoje)
+    amanha.setDate(amanha.getDate() + 1)
+    const dataAmanha = amanha.toISOString().split('T')[0]
+
+    // Lançamentos avulsos futuros — exclui compras no crédito já vinculadas à fatura
+    // (a fatura aparece como compromisso separado, evitando dupla contagem)
+    const { data: avulsosRaw } = await supabase
       .from('lancamentos')
       .select('*, contaOrigem:conta_id(categoria_conta), contaDestino:conta_destino_id(categoria_conta)')
       .eq('user_id', user.id)
+      .eq('recorrente', false)
+      .gte('data', dataAmanha)
+      .or('forma_pagamento.neq.credito,forma_pagamento.is.null')
+      .is('fatura_id', null)
 
-    // Separar: avulsos (com data, dentro do período) vs recorrentes (repetem todo mês)
-    const lancamentosAvulsos = (todosLancamentos || [])
-      .filter(l => !l.recorrente && l.data >= dataInicioStr && l.data <= dataFimStr)
-      .map(l => ({
-        ...l,
-        contaOrigemCategoria: l.contaOrigem?.categoria_conta,
-        contaDestinoCategoria: l.contaDestino?.categoria_conta
-      }))
+    const lancamentosAvulsos = (avulsosRaw || []).map(l => ({
+      ...l,
+      contaOrigemCategoria: l.contaOrigem?.categoria_conta,
+      contaDestinoCategoria: l.contaDestino?.categoria_conta
+    }))
 
-    const lancamentosRecorrentes = (todosLancamentos || [])
-      .filter(l => l.recorrente)
-      .map(l => ({
-        ...l,
-        contaOrigemCategoria: l.contaOrigem?.categoria_conta,
-        contaDestinoCategoria: l.contaDestino?.categoria_conta
-      }))
+    const { data: recorrentesRaw } = await supabase
+      .from('lancamentos')
+      .select('*, contaOrigem:conta_id(categoria_conta), contaDestino:conta_destino_id(categoria_conta)')
+      .eq('user_id', user.id)
+      .eq('recorrente', true)
+
+    const lancamentosRecorrentes = (recorrentesRaw || []).map(l => ({
+      ...l,
+      contaOrigemCategoria: l.contaOrigem?.categoria_conta,
+      contaDestinoCategoria: l.contaDestino?.categoria_conta
+    }))
 
     const { data: fixos } = await supabase
       .from('fixos')
@@ -72,9 +83,6 @@ export function useProjecao(diasFuturos = 90) {
       .eq('user_id', user.id)
       .in('status', ['aberta', 'fechada'])
 
-    const amanha = new Date(hoje)
-    amanha.setDate(amanha.getDate() + 1)
-
     const lancamentosFatura = []
 
     for (const fatura of (todasFaturas || [])) {
@@ -94,17 +102,20 @@ export function useProjecao(diasFuturos = 90) {
 
       let dataProjetada
       if (fatura.status === 'fechada') {
-        dataProjetada = amanha.toISOString().split('T')[0]
+        dataProjetada = dataAmanha
       } else {
-        const diaFechamento = fatura.cartao?.dia_fechamento || 27
+        // Vencimento = dia 05 do mês seguinte ao fechamento (padrão Nubank/maioria dos cartões)
+        const diaFechamento = fatura.cartao?.dia_vencimento || fatura.cartao?.dia_fechamento || 27
         const hojeRef = new Date()
         let mesVenc = hojeRef.getMonth() + 1
         let anoVenc = hojeRef.getFullYear()
-        if (hojeRef.getDate() >= diaFechamento) {
-          mesVenc += 1
-          if (mesVenc > 12) { mesVenc = 1; anoVenc += 1 }
-        }
-        dataProjetada = `${anoVenc}-${String(mesVenc).padStart(2, '0')}-${String(diaFechamento).padStart(2, '0')}`
+
+        // Avança para o mês seguinte ao fechamento
+        mesVenc += 1
+        if (mesVenc > 12) { mesVenc = 1; anoVenc += 1 }
+
+        // Vencimento sempre dia 05 do mês seguinte
+        dataProjetada = `${anoVenc}-${String(mesVenc).padStart(2, '0')}-05`
       }
 
       lancamentosFatura.push({
