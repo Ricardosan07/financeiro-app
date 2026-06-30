@@ -1,18 +1,10 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Plus, Trash2, Pencil, Clock, PiggyBank, CheckCircle2 } from 'lucide-react'
+import { Plus, Trash2, Pencil, Clock, CheckCircle2, AlertTriangle } from 'lucide-react'
 import FAB from '../components/FAB'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
-
-const statusConfig = {
-  pendente: { label: 'Pendente', icon: Clock, cor: 'text-yellow', bg: 'bg-yellow/10 border-yellow/30' },
-  reservado: { label: 'Reservado', icon: PiggyBank, cor: 'text-indigo', bg: 'bg-indigo/10 border-indigo/30' },
-  pago: { label: 'Pago', icon: CheckCircle2, cor: 'text-green', bg: 'bg-green/10 border-green/30' },
-}
-
-const proximoStatus = { pendente: 'reservado', reservado: 'pago', pago: 'pendente' }
 
 export default function Fixos() {
   const { user } = useAuth()
@@ -28,11 +20,17 @@ export default function Fixos() {
 
   const [form, setForm] = useState({
     descricao: '', valor: '', dia_vencimento: '1',
-    data_inicio: new Date().toISOString().split('T')[0], data_fim: ''
+    data_inicio: new Date().toISOString().split('T')[0], data_fim: '', conta_id: ''
   })
+  const [contas, setContas] = useState([])
 
   const fetchFixos = async () => {
-    const { data } = await supabase.from('fixos').select('*').eq('user_id', user.id).order('dia_vencimento')
+    const { data } = await supabase
+      .from('fixos')
+      .select('*, conta:conta_id(nome)')
+      .eq('user_id', user.id)
+      .eq('ativo', true)
+      .order('dia_vencimento', { ascending: true })
     setFixos(data || [])
 
     const { data: statusData } = await supabase
@@ -47,7 +45,20 @@ export default function Fixos() {
     setStatusMap(map)
   }
 
-  useEffect(() => { fetchFixos() }, [])
+  const fetchContas = async () => {
+    const { data } = await supabase.from('contas').select('id, nome').eq('user_id', user.id).eq('ativo', true)
+    setContas(data || [])
+  }
+
+  useEffect(() => { fetchFixos(); fetchContas() }, [])
+
+  const diaHoje = hoje.getDate()
+
+  const getStatusAutomatico = (fixo) => {
+    if (diaHoje > fixo.dia_vencimento) return 'pago'
+    if (fixo.dia_vencimento - diaHoje <= 3) return 'pendente_urgente'
+    return 'pendente'
+  }
 
   const handleSave = async () => {
     setLoading(true)
@@ -57,6 +68,7 @@ export default function Fixos() {
       dia_vencimento: parseInt(form.dia_vencimento),
       data_inicio: form.data_inicio,
       data_fim: form.data_fim || null,
+      conta_id: form.conta_id || null,
     }
 
     let error
@@ -69,7 +81,7 @@ export default function Fixos() {
     }
 
     if (error) { alert('Erro: ' + error.message); setLoading(false); return }
-    setForm({ descricao: '', valor: '', dia_vencimento: '1', data_inicio: new Date().toISOString().split('T')[0], data_fim: '' })
+    setForm({ descricao: '', valor: '', dia_vencimento: '1', data_inicio: new Date().toISOString().split('T')[0], data_fim: '', conta_id: '' })
     setEditandoId(null)
     setShowForm(false)
     fetchFixos()
@@ -82,7 +94,8 @@ export default function Fixos() {
       valor: String(f.valor),
       dia_vencimento: String(f.dia_vencimento),
       data_inicio: f.data_inicio,
-      data_fim: f.data_fim || ''
+      data_fim: f.data_fim || '',
+      conta_id: f.conta_id || ''
     })
     setEditandoId(f.id)
     setTimeout(() => setShowForm(true), 0)
@@ -91,24 +104,6 @@ export default function Fixos() {
   const handleDelete = async (id) => {
     await supabase.from('fixos').update({ ativo: false }).eq('id', id)
     fetchFixos()
-  }
-
-  const handleToggleStatus = async (fixoId) => {
-    const statusAtual = statusMap[fixoId] || 'pendente'
-    const novoStatus = proximoStatus[statusAtual]
-
-    const { error } = await supabase.from('fixos_status').upsert({
-      user_id: user.id,
-      fixo_id: fixoId,
-      mes: mesAtual,
-      ano: anoAtual,
-      status: novoStatus,
-      data_atualizacao: new Date().toISOString()
-    }, { onConflict: 'fixo_id,mes,ano' })
-
-    if (!error) {
-      setStatusMap(prev => ({ ...prev, [fixoId]: novoStatus }))
-    }
   }
 
   const totalMensal = fixos.filter(f => f.ativo).reduce((sum, f) => sum + Number(f.valor), 0)
@@ -122,7 +117,7 @@ export default function Fixos() {
           <h1 className="font-display text-2xl font-bold text-textprimary">Fixos Recorrentes</h1>
           <p className="text-textsecondary text-sm mt-1">Gastos que se repetem todo mês</p>
         </div>
-        <button onClick={() => { setEditandoId(null); setForm({ descricao: '', valor: '', dia_vencimento: '1', data_inicio: new Date().toISOString().split('T')[0], data_fim: '' }); setShowForm(true) }}
+        <button onClick={() => { setEditandoId(null); setForm({ descricao: '', valor: '', dia_vencimento: '1', data_inicio: new Date().toISOString().split('T')[0], data_fim: '', conta_id: '' }); setShowForm(true) }}
           className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
           <Plus size={16} /> Novo Fixo
         </button>
@@ -163,20 +158,31 @@ export default function Fixos() {
           </thead>
           <tbody>
             {fixos.filter(f => f.ativo).map(f => {
-              const status = statusMap[f.id] || 'pendente'
-              const cfg = statusConfig[status]
-              const Icone = cfg.icon
+              const status = getStatusAutomatico(f)
               return (
                 <tr key={f.id} className="border-b border-border/50 hover:bg-white/5 transition-colors">
-                  <td className="px-3 md:px-6 py-3 md:py-4 text-textprimary text-sm">{f.descricao}</td>
+                  <td className="px-3 md:px-6 py-3 md:py-4">
+                    <p className="font-medium text-textprimary text-sm">{f.descricao}</p>
+                    {f.conta?.nome && (
+                      <p className="text-textsecondary text-xs mt-0.5">{f.conta.nome}</p>
+                    )}
+                  </td>
                   <td className="hidden md:table-cell px-6 py-4 text-center text-textsecondary text-sm">Dia {f.dia_vencimento}</td>
                   <td className="px-3 md:px-6 py-3 md:py-4 text-right text-red font-medium text-sm">{formatBRL(f.valor)}</td>
                   <td className="px-3 md:px-6 py-3 md:py-4 text-center">
-                    <button onClick={() => handleToggleStatus(f.id)}
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${cfg.bg} ${cfg.cor}`}>
-                      <Icone size={12} />
-                      {cfg.label}
-                    </button>
+                    {status === 'pago' ? (
+                      <span className="flex items-center gap-1 justify-center text-green text-xs font-medium">
+                        <CheckCircle2 size={14} /> Debitado
+                      </span>
+                    ) : status === 'pendente_urgente' ? (
+                      <span className="flex items-center gap-1 justify-center text-yellow text-xs font-medium">
+                        <AlertTriangle size={14} /> Vence em breve
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 justify-center text-textsecondary text-xs">
+                        <Clock size={14} /> Pendente
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex gap-2 justify-end">
@@ -237,6 +243,14 @@ export default function Fixos() {
                     className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo" />
                 </div>
               </div>
+              <div>
+                <label className="text-textsecondary text-sm mb-1 block">Conta de débito</label>
+                <select value={form.conta_id} onChange={e => setForm({ ...form, conta_id: e.target.value })}
+                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo">
+                  <option value="">Selecione a conta...</option>
+                  {contas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={() => { setShowForm(false); setEditandoId(null) }}
@@ -251,7 +265,7 @@ export default function Fixos() {
           </div>
         </div>
       )}
-      <FAB onClick={() => { setEditandoId(null); setForm({ descricao: '', valor: '', dia_vencimento: '1', data_inicio: new Date().toISOString().split('T')[0], data_fim: '' }); setShowForm(true) }} label="Novo Fixo" />
+      <FAB onClick={() => { setEditandoId(null); setForm({ descricao: '', valor: '', dia_vencimento: '1', data_inicio: new Date().toISOString().split('T')[0], data_fim: '', conta_id: '' }); setShowForm(true) }} label="Novo Fixo" />
     </div>
   )
 }

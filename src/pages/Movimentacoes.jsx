@@ -107,7 +107,7 @@ export default function Movimentacoes() {
         if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) + payload.valor }).eq('id', payload.conta_id)
 
       } else if (payload.tipo === 'saida') {
-        // Crédito: NÃO desconta saldo — vincula à fatura e cria parcelas se necessário
+        // Crédito: NÃO desconta saldo — vincula à fatura e distribui parcelas pelos meses seguintes
         if (payload.forma_pagamento === 'credito') {
           if (novoLancamentoId) {
             const { data: cartoes } = await supabase
@@ -115,38 +115,76 @@ export default function Movimentacoes() {
 
             if (cartoes && cartoes.length > 0) {
               const cartao = cartoes[0]
+              const numParcelas = parseInt(form.num_parcelas) || 1
+              const valorParcela = numParcelas > 1
+                ? payload.valor / numParcelas
+                : payload.valor
+
               const dt = new Date(payload.data + 'T00:00:00')
               const dia = dt.getDate()
-              let mes = dt.getMonth() + 1
-              let ano = dt.getFullYear()
-
+              let mesBase = dt.getMonth() + 1
+              let anoBase = dt.getFullYear()
               if (dia > cartao.dia_fechamento) {
-                mes += 1
-                if (mes > 12) { mes = 1; ano += 1 }
+                mesBase += 1
+                if (mesBase > 12) { mesBase = 1; anoBase += 1 }
               }
 
-              // Buscar ou criar fatura do mês da compra
-              const { data: faturaExistente } = await supabase
-                .from('faturas').select('id').eq('cartao_id', cartao.id).eq('mes', mes).eq('ano', ano).single()
+              const getOuCriarFatura = async (mes, ano) => {
+                // maybeSingle() retorna null sem erro quando não encontra resultado
+                const { data: fExistente } = await supabase
+                  .from('faturas').select('id')
+                  .eq('cartao_id', cartao.id).eq('mes', mes).eq('ano', ano)
+                  .maybeSingle()
+                if (fExistente) return fExistente.id
 
-              let faturaId = faturaExistente?.id
-              if (!faturaId) {
-                const { data: novaFatura } = await supabase
-                  .from('faturas').insert({ user_id: user.id, cartao_id: cartao.id, mes, ano, status: 'aberta', valor_inicial: 0 }).select('id')
-                if (novaFatura?.length > 0) faturaId = novaFatura[0].id
+                const { data: novaF, error: errF } = await supabase
+                  .from('faturas')
+                  .insert({ user_id: user.id, cartao_id: cartao.id, mes, ano, status: 'aberta', valor_inicial: 0 })
+                  .select('id')
+                  .maybeSingle()
+                return novaF?.id || null
               }
 
-              if (faturaId) {
-                await supabase.from('lancamentos').update({ cartao_id: cartao.id, fatura_id: faturaId }).eq('id', novoLancamentoId)
+              // 1ª parcela: atualizar o lançamento já criado com o valor da parcela
+              const faturaId1 = await getOuCriarFatura(mesBase, anoBase)
+              if (faturaId1) {
+                await supabase.from('lancamentos').update({
+                  cartao_id: cartao.id,
+                  fatura_id: faturaId1,
+                  valor: valorParcela,
+                  descricao: numParcelas > 1
+                    ? `${payload.descricao} (1/${numParcelas})`
+                    : payload.descricao
+                }).eq('id', novoLancamentoId)
               }
 
-              // Se parcelado (> 1x), criar parcela no módulo de Parcelas
-              const numParcelas = parseInt(form.num_parcelas) || 1
+              // Parcelas 2, 3, 4... — criar lançamentos nas faturas seguintes
               if (numParcelas > 1) {
-                const valorParcela = payload.valor / numParcelas
-                const totalMesesOffset = (mes - 1) + (numParcelas - 1)
+                for (let i = 2; i <= numParcelas; i++) {
+                  let mes = mesBase + (i - 1)
+                  let ano = anoBase
+                  while (mes > 12) { mes -= 12; ano += 1 }
+
+                  const faturaId = await getOuCriarFatura(mes, ano)
+                  if (faturaId) {
+                    await supabase.from('lancamentos').insert({
+                      user_id: user.id,
+                      data: `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`,
+                      descricao: `${payload.descricao} (${i}/${numParcelas})`,
+                      valor: valorParcela,
+                      tipo: 'saida',
+                      forma_pagamento: 'credito',
+                      cartao_id: cartao.id,
+                      fatura_id: faturaId,
+                      conta_id: payload.conta_id,
+                      categoria_id: payload.categoria_id || null
+                    })
+                  }
+                }
+
+                const totalMesesOffset = (mesBase - 1) + (numParcelas - 1)
                 const mesFim = (totalMesesOffset % 12) + 1
-                const anoFim = ano + Math.floor(totalMesesOffset / 12)
+                const anoFim = anoBase + Math.floor(totalMesesOffset / 12)
 
                 await supabase.from('parcelas').insert({
                   user_id: user.id,
@@ -154,11 +192,11 @@ export default function Movimentacoes() {
                   valor_total: payload.valor,
                   num_parcelas: numParcelas,
                   valor_parcela: valorParcela,
-                  mes_inicio: mes,
-                  ano_inicio: ano,
+                  mes_inicio: mesBase,
+                  ano_inicio: anoBase,
                   mes_fim: mesFim,
                   ano_fim: anoFim,
-                  dia_pagamento: cartao.dia_fechamento || 1,
+                  dia_pagamento: 5,
                   forma: 'cartao',
                   cartao_id: cartao.id,
                   ativo: true

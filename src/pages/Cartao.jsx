@@ -1,12 +1,29 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useCartao } from '../hooks/useCartao'
-import { CreditCard, Plus, Pencil, X } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { CreditCard, Plus, Pencil, X, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
-const mesesNome = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+const mesesNome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+const mesesAbrev = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+
+function formatDataExtenso(dataStr) {
+  if (!dataStr) return ''
+  const partes = dataStr.split('/')
+  if (partes.length !== 3) return dataStr
+  const dia = parseInt(partes[0])
+  const mes = parseInt(partes[1]) - 1
+  const ano = partes[2]
+  return `${dia} de ${mesesNome[mes]}`
+}
+
+function formatDataCompra(dataStr) {
+  if (!dataStr) return ''
+  const dt = new Date(dataStr + 'T00:00:00')
+  return `${String(dt.getDate()).padStart(2, '0')} ${mesesAbrev[dt.getMonth()].toUpperCase()}`
+}
 
 export default function Cartao() {
   const { user } = useAuth()
@@ -25,6 +42,8 @@ export default function Cartao() {
   const [setupForm, setSetupForm] = useState({ nome: '', dia_fechamento: '27', conta_pagamento_id: '' })
   const [contas, setContas] = useState([])
   const [saving, setSaving] = useState(false)
+  const [mesSelecionado, setMesSelecionado] = useState(null)
+  const graficoRef = useRef(null)
 
   const carregarContas = async () => {
     const { data } = await supabase.from('contas').select('*').eq('user_id', user.id).eq('ativo', true)
@@ -37,6 +56,28 @@ export default function Cartao() {
     }
   }, [editandoCompra])
 
+  const dadosGrafico = [
+    ...([...historico].reverse().map(f => ({
+      mes: `${mesesAbrev[f.mes - 1]} ${String(f.ano).slice(2)}`,
+      valor: Number(f.valor_pago || f.valor_inicial || 0),
+      atual: false,
+      id: f.id
+    }))),
+    ...(faturaAtual ? [{
+      mes: `${mesesAbrev[(faturaAtual.mes || new Date().getMonth() + 1) - 1]} ${String(faturaAtual.ano || new Date().getFullYear()).slice(2)}`,
+      valor: faturaAtual.total || 0,
+      atual: true,
+      id: 'atual'
+    }] : [])
+  ]
+
+  while (dadosGrafico.length < 6) {
+    dadosGrafico.unshift({ mes: '—', valor: 0, atual: false, id: `vazio-${dadosGrafico.length}` })
+  }
+
+  const maxValor = Math.max(...dadosGrafico.map(d => d.valor), 1)
+  const mesSelecionadoAtual = mesSelecionado || dadosGrafico[dadosGrafico.length - 1]?.id
+
   const handlePagar = async () => {
     if (!faturaAtual) return
     setSaving(true)
@@ -47,37 +88,27 @@ export default function Cartao() {
 
     if (valorPago <= 0) { setSaving(false); return }
 
-    const saldoRestante = faturaAtual.total - valorPago
+    const saldoRestante = Math.max(0, faturaAtual.total - valorPago)
 
     if (saldoRestante <= 0.01) {
       await supabase.from('faturas').update({
-        status: 'paga',
-        data_pagamento: dataPagamento,
-        valor_pago: valorPago
+        status: 'paga', data_pagamento: dataPagamento, valor_pago: valorPago
       }).eq('id', faturaAtual.id)
     } else {
       await supabase.from('faturas').update({
-        valor_inicial: saldoRestante,
-        data_pagamento: dataPagamento,
+        valor_inicial: saldoRestante, data_pagamento: dataPagamento,
       }).eq('id', faturaAtual.id)
     }
 
     if (cartao?.conta_pagamento_id) {
-      const { data: conta } = await supabase
-        .from('contas').select('saldo_atual').eq('id', cartao.conta_pagamento_id).single()
+      const { data: conta } = await supabase.from('contas').select('saldo_atual').eq('id', cartao.conta_pagamento_id).single()
       if (conta) {
-        await supabase.from('contas').update({
-          saldo_atual: Number(conta.saldo_atual) - valorPago
-        }).eq('id', cartao.conta_pagamento_id)
+        await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) - valorPago }).eq('id', cartao.conta_pagamento_id)
       }
-
       await supabase.from('lancamentos').insert({
-        user_id: user.id,
-        data: dataPagamento,
+        user_id: user.id, data: dataPagamento,
         descricao: `Pagamento fatura ${cartao.nome}${tipoPagamento === 'parcial' ? ' (parcial)' : ''}`,
-        valor: valorPago,
-        tipo: 'saida',
-        conta_id: cartao.conta_pagamento_id
+        valor: valorPago, tipo: 'saida', conta_id: cartao.conta_pagamento_id
       })
     }
 
@@ -119,19 +150,6 @@ export default function Cartao() {
     setSaving(false)
   }
 
-  const dadosGrafico = [
-    ...historico.slice().reverse().map(f => ({
-      mes: `${mesesNome[f.mes - 1]}/${String(f.ano).slice(2)}`,
-      valor: Number(f.valor_pago || f.valor_inicial || 0),
-      pago: true
-    })),
-    faturaAtual ? {
-      mes: `${mesesNome[(faturaAtual.mes || new Date().getMonth() + 1) - 1]}/${String(faturaAtual.ano || new Date().getFullYear()).slice(2)}`,
-      valor: faturaAtual.total || 0,
-      pago: false
-    } : null
-  ].filter(Boolean)
-
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <p className="text-textsecondary">Carregando...</p>
@@ -151,7 +169,6 @@ export default function Cartao() {
           Cadastrar Cartão
         </button>
       </div>
-
       {showNovoCartao && (
         <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
           <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 w-full md:max-w-md">
@@ -161,7 +178,7 @@ export default function Cartao() {
                 <label className="text-textsecondary text-sm mb-1 block">Nome</label>
                 <input value={setupForm.nome} onChange={e => setSetupForm({ ...setupForm, nome: e.target.value })}
                   className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo"
-                  placeholder="Ex: Nubank, XP..." />
+                  placeholder="Ex: Nubank" />
               </div>
               <div>
                 <label className="text-textsecondary text-sm mb-1 block">Dia de fechamento</label>
@@ -170,7 +187,7 @@ export default function Cartao() {
                   className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo" />
               </div>
               <div>
-                <label className="text-textsecondary text-sm mb-1 block">Conta para pagamento</label>
+                <label className="text-textsecondary text-sm mb-1 block">Conta de pagamento</label>
                 <select value={setupForm.conta_pagamento_id}
                   onChange={e => setSetupForm({ ...setupForm, conta_pagamento_id: e.target.value })}
                   className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo">
@@ -180,20 +197,12 @@ export default function Cartao() {
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowNovoCartao(false)}
-                className="flex-1 border border-border text-textsecondary py-3 rounded-xl text-sm">Cancelar</button>
+              <button onClick={() => setShowNovoCartao(false)} className="flex-1 border border-border text-textsecondary py-3 rounded-xl text-sm">Cancelar</button>
               <button onClick={async () => {
                 setSaving(true)
-                await supabase.from('cartoes').insert({
-                  user_id: user.id, nome: setupForm.nome,
-                  dia_fechamento: parseInt(setupForm.dia_fechamento),
-                  conta_pagamento_id: setupForm.conta_pagamento_id || null
-                })
-                setShowNovoCartao(false)
-                recarregar()
-                setSaving(false)
-              }} disabled={saving || !setupForm.nome}
-                className="flex-1 bg-indigo text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50">
+                await supabase.from('cartoes').insert({ user_id: user.id, nome: setupForm.nome, dia_fechamento: parseInt(setupForm.dia_fechamento), conta_pagamento_id: setupForm.conta_pagamento_id || null })
+                setShowNovoCartao(false); recarregar(); setSaving(false)
+              }} disabled={saving || !setupForm.nome} className="flex-1 bg-indigo text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Cadastrar'}
               </button>
             </div>
@@ -204,22 +213,18 @@ export default function Cartao() {
   )
 
   return (
-    <div className="pb-24">
-      {/* Header */}
+    <div className="pb-28">
+      {/* Header com seletor de cartões */}
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="font-display text-xl font-bold text-textprimary flex items-center gap-2">
-            <CreditCard size={18} className="text-indigo" /> {cartao.nome}
-          </h1>
-          <p className="text-textsecondary text-xs mt-0.5">Fecha dia {cartao.dia_fechamento}</p>
-        </div>
+        <h1 className="font-display text-xl font-bold text-textprimary flex items-center gap-2">
+          <CreditCard size={18} className="text-indigo" /> {cartao.nome}
+        </h1>
         <button onClick={() => { carregarContas(); setShowNovoCartao(true) }}
           className="hidden md:flex items-center gap-1 border border-border text-textsecondary px-3 py-2 rounded-xl text-xs">
-          <Plus size={12} /> Novo cartão
+          <Plus size={12} /> Novo
         </button>
       </div>
 
-      {/* Seletor de cartões */}
       {cartoes.length > 1 && (
         <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
           {cartoes.map(c => (
@@ -235,102 +240,136 @@ export default function Cartao() {
         </div>
       )}
 
-      {/* Card principal da fatura */}
-      {faturaAtual && (
-        <div className="bg-surface border border-border rounded-2xl p-5 mb-4">
-          <p className="text-textsecondary text-xs mb-1">Fatura atual</p>
-          <p className="font-display text-4xl font-bold text-textprimary mb-3">
-            {formatBRL(faturaAtual.total)}
-          </p>
+      {/* GRÁFICO DE BARRAS — estilo Nubank */}
+      <div className="bg-surface border border-border rounded-2xl p-5 mb-4">
+        <p className="text-indigo text-xs font-semibold mb-1">Fatura atual</p>
 
-          <div className="flex gap-4 mb-4">
+        <p className="font-display text-4xl font-bold text-textprimary mb-1">
+          {formatBRL(faturaAtual?.total || 0)}
+        </p>
+
+        <div className="flex gap-4 mb-5">
+          <div>
+            <p className="text-textsecondary text-xs">Vencimento</p>
+            <p className="text-textprimary text-sm font-medium">
+              {faturaAtual ? formatDataExtenso(faturaAtual.vencimento) : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-textsecondary text-xs">Fechamento</p>
+            <p className="text-textprimary text-sm font-medium">
+              {faturaAtual ? formatDataExtenso(faturaAtual.fechamento) : '—'}
+            </p>
+          </div>
+        </div>
+
+        {/* Gráfico de barras arredondadas scrollável */}
+        <div className="overflow-x-auto" ref={graficoRef}>
+          <div className="flex items-end gap-3 h-24 min-w-max px-1 pb-1">
+            {dadosGrafico.map((d, i) => {
+              const altura = d.valor > 0 ? Math.max((d.valor / maxValor) * 80, 8) : 4
+              const selecionado = mesSelecionadoAtual === d.id
+              return (
+                <div key={d.id} className="flex flex-col items-center gap-1 cursor-pointer"
+                  onClick={() => setMesSelecionado(d.id)}>
+                  <div className="flex items-end" style={{ height: '80px' }}>
+                    <div
+                      className="transition-all duration-200"
+                      style={{
+                        width: '28px',
+                        height: `${altura}px`,
+                        borderRadius: '6px 6px 4px 4px',
+                        backgroundColor: d.atual
+                          ? '#6366F1'
+                          : selecionado
+                          ? '#6366F1'
+                          : d.valor > 0 ? '#6366F180' : '#2A2D3A',
+                        opacity: d.valor === 0 ? 0.3 : 1
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs whitespace-nowrap" style={{
+                    color: (d.atual || selecionado) ? '#6366F1' : '#64748B',
+                    fontWeight: (d.atual || selecionado) ? '600' : '400',
+                    fontSize: '10px'
+                  }}>
+                    {d.mes}
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* LISTA DE COMPRAS — estilo Nubank */}
+      <div className="bg-surface border border-border rounded-2xl overflow-hidden mb-4">
+        {Number(faturaAtual?.valor_inicial) > 0 && (
+          <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
             <div>
-              <p className="text-textsecondary text-xs">Vencimento</p>
-              <p className="text-textprimary text-sm font-medium">{faturaAtual.vencimento}</p>
+              <p className="text-sm text-textprimary">Saldo anterior</p>
+              <p className="text-xs text-textsecondary">Acumulado antes do sistema</p>
             </div>
-            <div>
-              <p className="text-textsecondary text-xs">Fechamento</p>
-              <p className="text-textprimary text-sm font-medium">{faturaAtual.fechamento}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-red font-medium">{formatBRL(faturaAtual.valor_inicial)}</p>
+              <button onClick={() => { setValorInicial(String(faturaAtual.valor_inicial)); setShowEditarInicial(true) }}
+                className="text-textsecondary hover:text-indigo">
+                <Pencil size={13} />
+              </button>
             </div>
           </div>
+        )}
 
-          {dadosGrafico.length > 1 && (
-            <div className="mb-4">
-              <ResponsiveContainer width="100%" height={100}>
-                <BarChart data={dadosGrafico} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="mes" tick={{ fontSize: 9, fill: '#64748B' }} axisLine={false} tickLine={false} />
-                  <YAxis hide />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1A1D27', border: '1px solid #2A2D3A', borderRadius: '8px', fontSize: '12px' }}
-                    formatter={v => formatBRL(v)} />
-                  <Bar dataKey="valor" radius={[4, 4, 0, 0]}>
-                    {dadosGrafico.map((entry, i) => (
-                      <Cell key={i} fill={entry.pago ? '#6366F1' : '#EF4444'} opacity={entry.pago ? 0.6 : 1} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-              <div className="flex gap-4 justify-center text-xs text-textsecondary mt-1">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-indigo/60 inline-block" /> Pago</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-red inline-block" /> Atual</span>
+        {faturaAtual && Number(faturaAtual.valor_inicial) === 0 && comprasFatura.length === 0 && (
+          <div className="px-5 py-4 border-b border-border/50">
+            <button onClick={() => { setValorInicial(''); setShowEditarInicial(true) }}
+              className="text-indigo text-sm hover:underline">
+              + Informar saldo anterior ao sistema
+            </button>
+          </div>
+        )}
+
+        {comprasFatura.length > 0 ? (
+          comprasFatura.map((c, i) => (
+            <div key={c.id} className={`flex items-center px-5 py-4 gap-4 ${i < comprasFatura.length - 1 ? 'border-b border-border/30' : ''}`}>
+              <div className="flex-shrink-0 text-center w-12">
+                <p className="text-xs font-bold text-textsecondary leading-tight">
+                  {formatDataCompra(c.data).split(' ')[0]}
+                </p>
+                <p className="text-xs text-textsecondary/70 leading-tight">
+                  {formatDataCompra(c.data).split(' ')[1]}
+                </p>
               </div>
-            </div>
-          )}
 
-          {/* Saldo anterior ao sistema */}
-          {Number(faturaAtual.valor_inicial) > 0 ? (
-            <div className="flex justify-between items-center bg-bg rounded-xl px-4 py-2.5 mb-3">
-              <span className="text-textsecondary text-xs">Saldo anterior</span>
-              <div className="flex items-center gap-2">
-                <span className="text-textprimary text-sm font-medium">{formatBRL(faturaAtual.valor_inicial)}</span>
-                <button onClick={() => { setValorInicial(String(faturaAtual.valor_inicial)); setShowEditarInicial(true) }}
-                  className="text-textsecondary hover:text-indigo">
-                  <Pencil size={12} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-textprimary truncate">{c.descricao}</p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <p className="text-sm font-medium text-textprimary">{formatBRL(c.valor)}</p>
+                <button onClick={() => setEditandoCompra(c)} className="text-textsecondary hover:text-indigo transition-colors">
+                  <Pencil size={13} />
+                </button>
+                <button onClick={() => handleExcluirCompra(c)} className="text-textsecondary hover:text-red transition-colors">
+                  <X size={13} />
                 </button>
               </div>
             </div>
-          ) : (
-            <button onClick={() => { setValorInicial(''); setShowEditarInicial(true) }}
-              className="w-full border border-dashed border-border hover:border-indigo text-textsecondary hover:text-indigo rounded-xl px-4 py-2.5 text-xs transition-colors mb-3 text-left">
-              + Informar saldo anterior ao sistema
-            </button>
-          )}
-
-          {/* Lista de compras */}
-          {comprasFatura.length > 0 ? (
-            <div className="divide-y divide-border/40">
-              {comprasFatura.map(c => (
-                <div key={c.id} className="flex items-center justify-between py-3 gap-2">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-textprimary truncate">{c.descricao}</p>
-                    <p className="text-xs text-textsecondary">
-                      {new Date(c.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <p className="text-red font-medium text-sm">{formatBRL(c.valor)}</p>
-                    <button onClick={() => setEditandoCompra(c)} className="text-textsecondary hover:text-indigo">
-                      <Pencil size={13} />
-                    </button>
-                    <button onClick={() => handleExcluirCompra(c)} className="text-textsecondary hover:text-red">
-                      <X size={13} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-textsecondary text-sm text-center py-4">Nenhuma compra neste ciclo ainda</p>
-          )}
-        </div>
-      )}
+          ))
+        ) : (
+          <div className="px-5 py-8 text-center">
+            <p className="text-textsecondary text-sm">Nenhuma compra neste ciclo</p>
+            <p className="text-textsecondary text-xs mt-1">Lançamentos no crédito aparecem aqui</p>
+          </div>
+        )}
+      </div>
 
       {/* Botão Pagar Fatura — fixo no fundo */}
       {faturaAtual && faturaAtual.total > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-bg border-t border-border md:relative md:border-0 md:p-0 md:bg-transparent z-20">
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-bg/95 backdrop-blur border-t border-border md:relative md:border-0 md:p-0 md:bg-transparent md:backdrop-blur-none z-20">
           <button onClick={() => setShowPagar(true)}
-            className="w-full bg-indigo hover:bg-indigo/90 text-white py-4 rounded-2xl font-display font-bold text-lg transition-colors">
-            Pagar Fatura
+            className="w-full bg-indigo hover:bg-indigo/90 text-white py-4 rounded-2xl font-display font-bold text-lg transition-colors shadow-lg shadow-indigo/20">
+            Pagar Fatura · {formatBRL(faturaAtual.total)}
           </button>
         </div>
       )}
@@ -340,43 +379,45 @@ export default function Cartao() {
         <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
           <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 w-full md:max-w-md">
             <h2 className="font-display text-xl font-bold text-textprimary mb-1">Pagar Fatura</h2>
-            <p className="text-textsecondary text-sm mb-6">Total: <strong className="text-textprimary">{formatBRL(faturaAtual.total)}</strong></p>
+            <p className="text-textsecondary text-sm mb-5">
+              Total: <strong className="text-textprimary">{formatBRL(faturaAtual.total)}</strong>
+            </p>
 
             <div className="grid grid-cols-2 gap-2 mb-4">
-              <button onClick={() => setTipoPagamento('total')}
-                className={`py-3 rounded-xl text-sm font-medium transition-colors ${
-                  tipoPagamento === 'total' ? 'bg-indigo/15 text-indigo border border-indigo/30' : 'border border-border text-textsecondary'
-                }`}>
-                Pagar total
-              </button>
-              <button onClick={() => setTipoPagamento('parcial')}
-                className={`py-3 rounded-xl text-sm font-medium transition-colors ${
-                  tipoPagamento === 'parcial' ? 'bg-indigo/15 text-indigo border border-indigo/30' : 'border border-border text-textsecondary'
-                }`}>
-                Valor parcial
-              </button>
+              {['total', 'parcial'].map(t => (
+                <button key={t} onClick={() => setTipoPagamento(t)}
+                  className={`py-3 rounded-xl text-sm font-medium transition-colors ${
+                    tipoPagamento === t
+                      ? 'bg-indigo/15 text-indigo border border-indigo/30'
+                      : 'border border-border text-textsecondary'
+                  }`}>
+                  {t === 'total' ? 'Pagar total' : 'Valor parcial'}
+                </button>
+              ))}
             </div>
 
             {tipoPagamento === 'total' ? (
-              <div className="bg-bg rounded-xl px-4 py-3 mb-4 flex justify-between">
+              <div className="bg-bg rounded-xl px-4 py-3 mb-4 flex justify-between items-center">
                 <span className="text-textsecondary text-sm">Valor</span>
-                <span className="text-indigo font-display font-bold">{formatBRL(faturaAtual.total)}</span>
+                <span className="text-indigo font-display font-bold text-xl">{formatBRL(faturaAtual.total)}</span>
               </div>
             ) : (
               <div className="mb-4">
                 <label className="text-textsecondary text-sm mb-1 block">Valor a pagar (R$)</label>
                 <input type="number" value={valorParcial} onChange={e => setValorParcial(e.target.value)}
-                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo text-lg"
+                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo text-lg mb-2"
                   placeholder="0,00" autoFocus />
                 {valorParcial && parseFloat(valorParcial) < faturaAtual.total && (
-                  <p className="text-textsecondary text-xs mt-2">
-                    Saldo restante: <span className="text-yellow font-medium">{formatBRL(faturaAtual.total - parseFloat(valorParcial))}</span> — permanece na fatura
-                  </p>
+                  <div className="bg-yellow/10 border border-yellow/20 rounded-xl px-4 py-2.5">
+                    <p className="text-yellow text-xs">
+                      Saldo restante <strong>{formatBRL(faturaAtual.total - parseFloat(valorParcial))}</strong> permanece na fatura
+                    </p>
+                  </div>
                 )}
               </div>
             )}
 
-            <div className="mb-6">
+            <div className="mb-5">
               <label className="text-textsecondary text-sm mb-1 block">Data do pagamento</label>
               <input type="date" value={dataPagamento} onChange={e => setDataPagamento(e.target.value)}
                 className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo" />
@@ -394,12 +435,14 @@ export default function Cartao() {
         </div>
       )}
 
-      {/* Modal: Saldo anterior */}
+      {/* Modal: Editar valor inicial */}
       {showEditarInicial && (
         <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
           <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 w-full md:max-w-md">
             <h2 className="font-display text-xl font-bold text-textprimary mb-2">Saldo anterior</h2>
-            <p className="text-textsecondary text-sm mb-4">Informe o saldo devedor antes de começar a usar o sistema.</p>
+            <p className="text-textsecondary text-sm mb-4">
+              Informe o saldo devedor acumulado antes de usar este sistema.
+            </p>
             <input type="number" value={valorInicial} onChange={e => setValorInicial(e.target.value)}
               className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo text-lg mb-6"
               placeholder="0,00" autoFocus />
@@ -470,7 +513,7 @@ export default function Cartao() {
                   className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo" />
               </div>
               <div>
-                <label className="text-textsecondary text-sm mb-1 block">Conta para pagamento</label>
+                <label className="text-textsecondary text-sm mb-1 block">Conta de pagamento</label>
                 <select value={setupForm.conta_pagamento_id}
                   onChange={e => setSetupForm({ ...setupForm, conta_pagamento_id: e.target.value })}
                   className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo">
@@ -489,9 +532,7 @@ export default function Cartao() {
                   dia_fechamento: parseInt(setupForm.dia_fechamento),
                   conta_pagamento_id: setupForm.conta_pagamento_id || null
                 })
-                setShowNovoCartao(false)
-                recarregar()
-                setSaving(false)
+                setShowNovoCartao(false); recarregar(); setSaving(false)
               }} disabled={saving || !setupForm.nome}
                 className="flex-1 bg-indigo text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Cadastrar'}

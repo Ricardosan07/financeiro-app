@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { Plus, Trash2, Pencil } from 'lucide-react'
-import FAB from '../components/FAB'
+import { Trash2, Pencil } from 'lucide-react'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
@@ -125,15 +124,13 @@ export default function Parcelas() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-textprimary">Parcelas</h1>
-          <p className="text-textsecondary text-sm mt-1">Compras parceladas em andamento</p>
-        </div>
-        <button onClick={() => { setEditandoId(null); setForm(vazio); setShowForm(true) }}
-          className="hidden md:flex items-center gap-2 bg-indigo hover:bg-indigo/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors">
-          <Plus size={16} /> Nova Parcela
-        </button>
+      <div className="mb-8">
+        <h1 className="font-display text-2xl font-bold text-textprimary">Parcelas</h1>
+        <p className="text-textsecondary text-sm mt-1">
+          Compras parceladas em andamento · Para adicionar, lance em{' '}
+          <a href="/movimentacoes" className="text-indigo hover:underline">Movimentações</a>{' '}
+          com forma Crédito e mais de 1 parcela
+        </p>
       </div>
 
       <div className="bg-surface border border-border rounded-2xl p-6 mb-6">
@@ -198,9 +195,7 @@ export default function Parcelas() {
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
           <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 md:p-8 w-full md:max-w-md max-h-[90vh] overflow-y-auto">
-            <h2 className="font-display text-xl font-bold text-textprimary mb-6">
-              {editandoId ? 'Editar Parcela' : 'Nova Parcela'}
-            </h2>
+            <h2 className="font-display text-xl font-bold text-textprimary mb-6">Editar Parcela</h2>
             <div className="space-y-4">
               <div>
                 <label className="text-textsecondary text-sm mb-1 block">Descrição</label>
@@ -292,13 +287,12 @@ export default function Parcelas() {
               </button>
               <button onClick={handleSave} disabled={loading || !form.descricao || !form.valor_total}
                 className="flex-1 bg-indigo hover:bg-indigo/90 text-white py-3 rounded-xl text-sm font-medium transition-colors disabled:opacity-50">
-                {loading ? 'Salvando...' : editandoId ? 'Atualizar' : 'Salvar'}
+                {loading ? 'Salvando...' : 'Atualizar'}
               </button>
             </div>
           </div>
         </div>
       )}
-      <FAB onClick={() => { setEditandoId(null); setForm(vazio); setShowForm(true) }} label="Nova Parcela" />
     </div>
   )
 }

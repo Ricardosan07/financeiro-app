@@ -389,21 +389,42 @@ export default function Dashboard() {
             <Calendar size={15} className="text-indigo" />
             <p className="text-textprimary font-medium">Próximos Compromissos</p>
           </div>
-          <div className="space-y-3">
-            {proximosEventos.map((ev, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className={`w-2 h-2 rounded-full ${ev.tipo === 'entrada' ? 'bg-green' : 'bg-red'}`} />
-                  <span className="text-sm text-textprimary">{ev.descricao}</span>
-                  <span className="text-xs text-textsecondary">
-                    {new Date(ev.data + 'T00:00:00').toLocaleDateString('pt-BR')}
+          <div className="space-y-0 divide-y divide-border/30">
+            {proximosEventos.map((ev, i) => {
+              const origem = ev.origem === 'fixo' ? 'Fixo recorrente'
+                : ev.origem === 'parcela' ? 'Parcela'
+                : ev.origem === 'fatura' ? 'Fatura cartão'
+                : ev.origem === 'transferencia' ? 'Transferência'
+                : 'Lançamento'
+
+              const iconeOrigem = ev.origem === 'fixo' ? '🔄'
+                : ev.origem === 'parcela' ? '💳'
+                : ev.origem === 'fatura' ? '🏦'
+                : ev.origem === 'entrada' ? '💰'
+                : '📌'
+
+              return (
+                <div key={i} className="flex items-center justify-between py-3 gap-3">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <span className={`w-2 h-2 rounded-full flex-shrink-0 ${ev.tipo === 'entrada' ? 'bg-green' : 'bg-red'}`} />
+                    <div className="min-w-0">
+                      <p className="text-sm text-textprimary truncate">{ev.descricao}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs">{iconeOrigem}</span>
+                        <span className="text-xs text-textsecondary">{origem}</span>
+                        <span className="text-xs text-textsecondary">·</span>
+                        <span className="text-xs text-textsecondary">
+                          {new Date(ev.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`text-sm font-medium flex-shrink-0 ${ev.tipo === 'entrada' ? 'text-green' : 'text-red'}`}>
+                    {ev.tipo === 'entrada' ? '+' : '-'}{formatBRL(ev.valor)}
                   </span>
                 </div>
-                <span className={`text-sm font-medium ${ev.tipo === 'entrada' ? 'text-green' : 'text-red'}`}>
-                  {ev.tipo === 'entrada' ? '+' : '-'}{formatBRL(ev.valor)}
-                </span>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}

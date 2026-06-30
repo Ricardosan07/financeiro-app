@@ -169,6 +169,7 @@ export default function VisaoMensal() {
             {diasDoMes.map(dia => {
               const dt = new Date(dia.data + 'T00:00:00')
               const isHoje = dia.data === hojeStr
+              const isPast = dia.data < hojeStr
               const cor = corSaldo(dia.saldo)
               const status = statusSaldo(dia.saldo)
 
@@ -176,7 +177,7 @@ export default function VisaoMensal() {
                 <tr key={dia.data}
                   className={`border-b border-border/40 transition-colors cursor-pointer ${
                     isHoje ? 'bg-indigo/10' : diaSelecionado === dt.getDate() ? 'bg-white/5' : 'hover:bg-white/5'
-                  }`}
+                  } ${isPast ? 'opacity-50' : ''}`}
                   onClick={() => setDiaSelecionado(dt.getDate() === diaSelecionado ? null : dt.getDate())}>
                   <td className="px-3 md:px-6 py-2 md:py-3">
                     <span className={`font-display font-bold text-base md:text-lg ${isHoje ? 'text-indigo' : 'text-textsecondary'}`}>

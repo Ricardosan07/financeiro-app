@@ -61,7 +61,7 @@ export function useCartao(cartaoIdSelecionado = null) {
       .eq('cartao_id', cartaoAlvo.id)
       .eq('mes', mes)
       .eq('ano', ano)
-      .single()
+      .maybeSingle()
 
     if (!fatura) {
       const { data: novaFatura } = await supabase
