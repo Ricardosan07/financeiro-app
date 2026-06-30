@@ -85,10 +85,24 @@ export function useProjecao(diasFuturos = 90) {
 
     const lancamentosFatura = []
 
+    const hojeRef = new Date()
+    const diaHoje = hojeRef.getDate()
+
     for (const fatura of (todasFaturas || [])) {
       let totalFatura = Number(fatura.valor_inicial || 0)
 
       if (fatura.status === 'aberta') {
+        // Só projetar a fatura do ciclo atual — faturas pré-criadas para meses futuros
+        // serão cobertas pela projeção de parcelas abaixo, evitando duplicatas
+        const diaFechamento = fatura.cartao?.dia_fechamento || 27
+        let mesCicloAtual = hojeRef.getMonth() + 1
+        let anoCicloAtual = hojeRef.getFullYear()
+        if (diaHoje > diaFechamento) {
+          mesCicloAtual += 1
+          if (mesCicloAtual > 12) { mesCicloAtual = 1; anoCicloAtual += 1 }
+        }
+        if (fatura.mes !== mesCicloAtual || fatura.ano !== anoCicloAtual) continue
+
         const { data: compras } = await supabase
           .from('lancamentos')
           .select('valor')
@@ -104,36 +118,88 @@ export function useProjecao(diasFuturos = 90) {
       if (fatura.status === 'fechada') {
         dataProjetada = dataAmanha
       } else {
-        // Vencimento = dia 05 do mês seguinte ao fechamento (padrão Nubank/maioria dos cartões)
-        const diaFechamento = fatura.cartao?.dia_vencimento || fatura.cartao?.dia_fechamento || 27
-        const hojeRef = new Date()
-        let mesVenc = hojeRef.getMonth() + 1
-        let anoVenc = hojeRef.getFullYear()
-
-        // Avança para o mês seguinte ao fechamento
-        mesVenc += 1
+        // Vencimento = dia 05 do mês seguinte ao mês da FATURA (não de hoje)
+        let mesVenc = fatura.mes + 1
+        let anoVenc = fatura.ano
         if (mesVenc > 12) { mesVenc = 1; anoVenc += 1 }
-
-        // Vencimento sempre dia 05 do mês seguinte
         dataProjetada = `${anoVenc}-${String(mesVenc).padStart(2, '0')}-05`
       }
+
+      if (dataProjetada < dataAmanha) continue
 
       lancamentosFatura.push({
         data: dataProjetada,
         descricao: `Fatura ${fatura.cartao?.nome || 'Cartão'} (${fatura.status === 'fechada' ? 'a pagar' : 'vencimento previsto'})`,
         valor: totalFatura,
         tipo: 'saida',
-        contaOrigemCategoria: 'livre'
+        contaOrigemCategoria: 'livre',
+        origem: 'fatura'
       })
     }
 
+    // Projetar meses futuros de parcelas no crédito por cartão
+    // Cobre os meses 2-N de compras parceladas (não há faturas pré-criadas após a correção)
+    const cartoesComFaturaAberta = new Map()
+    ;(todasFaturas || []).filter(f => f.status === 'aberta').forEach(f => {
+      if (!cartoesComFaturaAberta.has(f.cartao_id)) {
+        cartoesComFaturaAberta.set(f.cartao_id, f.cartao)
+      }
+    })
+
+    for (const [cartaoId, cartaoInfo] of cartoesComFaturaAberta) {
+      const parcelasCartao = (parcelas || []).filter(p => p.cartao_id === cartaoId && p.ativo)
+      if (parcelasCartao.length === 0) continue
+
+      const diaFechamento = cartaoInfo?.dia_fechamento || 27
+      let mesCicloAtual = hojeRef.getMonth() + 1
+      let anoCicloAtual = hojeRef.getFullYear()
+      if (diaHoje > diaFechamento) {
+        mesCicloAtual += 1
+        if (mesCicloAtual > 12) { mesCicloAtual = 1; anoCicloAtual += 1 }
+      }
+
+      for (let offset = 1; offset <= 13; offset++) {
+        let mesFuturo = mesCicloAtual + offset
+        let anoFuturo = anoCicloAtual
+        while (mesFuturo > 12) { mesFuturo -= 12; anoFuturo += 1 }
+
+        const totalParcelasMes = parcelasCartao.reduce((sum, p) => {
+          if (!p.ativo) return sum
+          if (anoFuturo < p.ano_inicio || (anoFuturo === p.ano_inicio && mesFuturo < p.mes_inicio)) return sum
+          if (anoFuturo > p.ano_fim || (anoFuturo === p.ano_fim && mesFuturo > p.mes_fim)) return sum
+          return sum + Number(p.valor_parcela)
+        }, 0)
+
+        if (totalParcelasMes <= 0) continue
+
+        let mesVenc = mesFuturo + 1
+        let anoVenc = anoFuturo
+        if (mesVenc > 12) { mesVenc = 1; anoVenc += 1 }
+        const dataVencimento = `${anoVenc}-${String(mesVenc).padStart(2, '0')}-05`
+
+        if (dataVencimento < dataAmanha || dataVencimento > dataFimStr) continue
+
+        lancamentosFatura.push({
+          data: dataVencimento,
+          descricao: `Fatura ${cartaoInfo?.nome || 'Cartão'} (parcelas previstas)`,
+          valor: totalParcelasMes,
+          tipo: 'saida',
+          contaOrigemCategoria: 'livre',
+          origem: 'fatura'
+        })
+      }
+    }
+
     const todosLancamentosAvulsos = [...lancamentosAvulsos, ...lancamentosFatura]
+
+    // Parcelas de cartão de crédito são projetadas acima via faturas — excluir do calcularProjecao
+    const parcelasParaProjecao = (parcelas || []).filter(p => !(p.forma === 'cartao' && p.cartao_id))
 
     const resultado = calcularProjecao(
       saldo,
       todosLancamentosAvulsos,
       fixos || [],
-      parcelas || [],
+      parcelasParaProjecao,
       hoje,
       fim,
       lancamentosRecorrentes

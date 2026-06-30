@@ -158,35 +158,14 @@ export default function Movimentacoes() {
                 }).eq('id', novoLancamentoId)
               }
 
-              // Parcelas 2, 3, 4... — criar lançamentos nas faturas seguintes
+              // Para parceladas: registrar no módulo Parcelas para projeção dos meses futuros
+              // (meses 2-N são projetados via useProjecao a partir da tabela parcelas, não via lancamentos individuais)
               if (numParcelas > 1) {
-                for (let i = 2; i <= numParcelas; i++) {
-                  let mes = mesBase + (i - 1)
-                  let ano = anoBase
-                  while (mes > 12) { mes -= 12; ano += 1 }
-
-                  const faturaId = await getOuCriarFatura(mes, ano)
-                  if (faturaId) {
-                    await supabase.from('lancamentos').insert({
-                      user_id: user.id,
-                      data: `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`,
-                      descricao: `${payload.descricao} (${i}/${numParcelas})`,
-                      valor: valorParcela,
-                      tipo: 'saida',
-                      forma_pagamento: 'credito',
-                      cartao_id: cartao.id,
-                      fatura_id: faturaId,
-                      conta_id: payload.conta_id,
-                      categoria_id: payload.categoria_id || null
-                    })
-                  }
-                }
-
                 const totalMesesOffset = (mesBase - 1) + (numParcelas - 1)
                 const mesFim = (totalMesesOffset % 12) + 1
                 const anoFim = anoBase + Math.floor(totalMesesOffset / 12)
 
-                await supabase.from('parcelas').insert({
+                const { data: novaParcela } = await supabase.from('parcelas').insert({
                   user_id: user.id,
                   descricao: payload.descricao,
                   valor_total: payload.valor,
@@ -200,7 +179,15 @@ export default function Movimentacoes() {
                   forma: 'cartao',
                   cartao_id: cartao.id,
                   ativo: true
-                })
+                }).select('id').maybeSingle()
+
+                // Vincular o lançamento da 1ª parcela ao registro de parcela pelo ID
+                // (evita dedup frágil por descrição em useCartao)
+                if (novaParcela?.id && novoLancamentoId) {
+                  await supabase.from('lancamentos')
+                    .update({ parcela_id: novaParcela.id })
+                    .eq('id', novoLancamentoId)
+                }
               }
             }
           }

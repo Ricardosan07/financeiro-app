@@ -9,6 +9,7 @@ export function useCartao(cartaoIdSelecionado = null) {
   const [faturaAtual, setFaturaAtual] = useState(null)
   const [comprasFatura, setComprasFatura] = useState([])
   const [historico, setHistorico] = useState([])
+  const [futurasFaturas, setFuturasFaturas] = useState([])
   const [loading, setLoading] = useState(true)
 
   const hoje = new Date()
@@ -77,15 +78,62 @@ export function useCartao(cartaoIdSelecionado = null) {
 
       const { data: compras } = await supabase
         .from('lancamentos')
-        .select('*')
+        .select('*, parcela_id')
         .eq('fatura_id', fatura.id)
         .order('data', { ascending: false })
 
       const totalCompras = (compras || []).reduce((s, c) => s + Number(c.valor), 0)
-      fatura.total = Number(fatura.valor_inicial || 0) + totalCompras
+
+      // Incluir parcelas de crédito ativas neste mês (ex.: lançamentos antigos sem lancamento vinculado)
+      const { data: parcelasCartao } = await supabase
+        .from('parcelas')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('cartao_id', cartaoAlvo.id)
+        .eq('ativo', true)
+
+      // Dedup por parcela_id (FK exata) — evita falso positivo por descrição idêntica
+      const parcelasComLancamento = new Set(
+        (compras || []).map(c => c.parcela_id).filter(Boolean)
+      )
+
+      const parcelasNestesMes = (parcelasCartao || []).filter(p => {
+        if (ano < p.ano_inicio || (ano === p.ano_inicio && mes < p.mes_inicio)) return false
+        if (ano > p.ano_fim || (ano === p.ano_fim && mes > p.mes_fim)) return false
+        return !parcelasComLancamento.has(p.id)
+      })
+
+      const totalParcelas = parcelasNestesMes.reduce((s, p) => s + Number(p.valor_parcela), 0)
+      fatura.total = Number(fatura.valor_inicial || 0) + totalCompras + totalParcelas
+
+      const parcelasComoCompras = parcelasNestesMes.map(p => ({
+        id: `parcela-${p.id}`,
+        descricao: p.descricao,
+        valor: p.valor_parcela,
+        data: `${ano}-${String(mes).padStart(2, '0')}-05`,
+        tipo: 'saida',
+        forma_pagamento: 'credito',
+        _isParcela: true
+      }))
+
+      // Calcular faturas futuras previstas (para o gráfico)
+      const futuras = []
+      for (let i = 1; i <= 5; i++) {
+        let mesFuturo = mes + i
+        let anoFuturo = ano
+        while (mesFuturo > 12) { mesFuturo -= 12; anoFuturo += 1 }
+        const totalF = (parcelasCartao || []).reduce((sum, p) => {
+          if (!p.ativo) return sum
+          if (anoFuturo < p.ano_inicio || (anoFuturo === p.ano_inicio && mesFuturo < p.mes_inicio)) return sum
+          if (anoFuturo > p.ano_fim || (anoFuturo === p.ano_fim && mesFuturo > p.mes_fim)) return sum
+          return sum + Number(p.valor_parcela)
+        }, 0)
+        futuras.push({ mes: mesFuturo, ano: anoFuturo, total: totalF, status: 'prevista' })
+      }
+      setFuturasFaturas(futuras)
 
       setFaturaAtual(fatura)
-      setComprasFatura(compras || [])
+      setComprasFatura([...(compras || []), ...parcelasComoCompras])
     }
 
     const { data: hist } = await supabase
@@ -103,5 +151,5 @@ export function useCartao(cartaoIdSelecionado = null) {
 
   useEffect(() => { if (user) carregar() }, [user, cartaoIdSelecionado])
 
-  return { cartoes, cartao, faturaAtual, comprasFatura, historico, loading, recarregar: carregar }
+  return { cartoes, cartao, faturaAtual, comprasFatura, historico, futurasFaturas, loading, recarregar: carregar }
 }

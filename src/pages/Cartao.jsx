@@ -28,7 +28,7 @@ function formatDataCompra(dataStr) {
 export default function Cartao() {
   const { user } = useAuth()
   const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState(null)
-  const { cartoes, cartao, faturaAtual, comprasFatura, historico, loading, recarregar } = useCartao(cartaoSelecionadoId)
+  const { cartoes, cartao, faturaAtual, comprasFatura, historico, futurasFaturas, loading, recarregar } = useCartao(cartaoSelecionadoId)
 
   const [showPagar, setShowPagar] = useState(false)
   const [showNovoCartao, setShowNovoCartao] = useState(false)
@@ -61,18 +61,27 @@ export default function Cartao() {
       mes: `${mesesAbrev[f.mes - 1]} ${String(f.ano).slice(2)}`,
       valor: Number(f.valor_pago || f.valor_inicial || 0),
       atual: false,
+      futuro: false,
       id: f.id
     }))),
     ...(faturaAtual ? [{
       mes: `${mesesAbrev[(faturaAtual.mes || new Date().getMonth() + 1) - 1]} ${String(faturaAtual.ano || new Date().getFullYear()).slice(2)}`,
       valor: faturaAtual.total || 0,
       atual: true,
+      futuro: false,
       id: 'atual'
-    }] : [])
+    }] : []),
+    ...(futurasFaturas || []).filter(f => f.total > 0).slice(0, 4).map(f => ({
+      mes: `${mesesAbrev[f.mes - 1]} ${String(f.ano).slice(2)}`,
+      valor: f.total,
+      atual: false,
+      futuro: true,
+      id: `futuro-${f.mes}-${f.ano}`
+    }))
   ]
 
   while (dadosGrafico.length < 6) {
-    dadosGrafico.unshift({ mes: '—', valor: 0, atual: false, id: `vazio-${dadosGrafico.length}` })
+    dadosGrafico.unshift({ mes: '—', valor: 0, atual: false, futuro: false, id: `vazio-${dadosGrafico.length}` })
   }
 
   const maxValor = Math.max(...dadosGrafico.map(d => d.valor), 1)
@@ -283,6 +292,8 @@ export default function Cartao() {
                           ? '#6366F1'
                           : selecionado
                           ? '#6366F1'
+                          : d.futuro
+                          ? '#6366F140'
                           : d.valor > 0 ? '#6366F180' : '#2A2D3A',
                         opacity: d.valor === 0 ? 0.3 : 1
                       }}
@@ -347,12 +358,14 @@ export default function Cartao() {
 
               <div className="flex items-center gap-2 flex-shrink-0">
                 <p className="text-sm font-medium text-textprimary">{formatBRL(c.valor)}</p>
-                <button onClick={() => setEditandoCompra(c)} className="text-textsecondary hover:text-indigo transition-colors">
-                  <Pencil size={13} />
-                </button>
-                <button onClick={() => handleExcluirCompra(c)} className="text-textsecondary hover:text-red transition-colors">
-                  <X size={13} />
-                </button>
+                {!c._isParcela && <>
+                  <button onClick={() => setEditandoCompra(c)} className="text-textsecondary hover:text-indigo transition-colors">
+                    <Pencil size={13} />
+                  </button>
+                  <button onClick={() => handleExcluirCompra(c)} className="text-textsecondary hover:text-red transition-colors">
+                    <X size={13} />
+                  </button>
+                </>}
               </div>
             </div>
           ))
