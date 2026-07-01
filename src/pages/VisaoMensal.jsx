@@ -1,36 +1,87 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useProjecao } from '../hooks/useProjecao'
 import { corSaldo, statusSaldo } from '../lib/projecao'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 const mesesNome = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 const diasSemana = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb']
 
 export default function VisaoMensal() {
+  const { user } = useAuth()
   const { projecao, loading } = useProjecao(365)
   const [mesOffset, setMesOffset] = useState(0)
   const [diaSelecionado, setDiaSelecionado] = useState(null)
+  const [lancamentosHistoricos, setLancamentosHistoricos] = useState({})
 
   const hoje = new Date()
+  // Data local sem problema de UTC (evita avançar um dia em fusos negativos)
+  const hojeStr = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`
+
   const mesAlvo = new Date(hoje.getFullYear(), hoje.getMonth() + mesOffset, 1)
   const anoAlvo = mesAlvo.getFullYear()
   const mesAlvoNum = mesAlvo.getMonth() + 1
 
-  const diasDoMes = projecao.filter(d => {
-    const dt = new Date(d.data + 'T00:00:00')
-    return dt.getFullYear() === anoAlvo && (dt.getMonth() + 1) === mesAlvoNum
-  })
+  // Buscar lançamentos históricos do mês selecionado (dias passados)
+  useEffect(() => {
+    if (!user) return
+    const primeiroDiaStr = `${anoAlvo}-${String(mesAlvoNum).padStart(2, '0')}-01`
+    // Só buscar se há dias passados neste mês
+    if (primeiroDiaStr > hojeStr) { setLancamentosHistoricos({}); return }
+
+    const fetchHistorico = async () => {
+      const { data } = await supabase
+        .from('lancamentos')
+        .select('id, data, descricao, valor, tipo')
+        .eq('user_id', user.id)
+        .eq('recorrente', false)
+        .gte('data', primeiroDiaStr)
+        .lte('data', hojeStr)
+        .order('data', { ascending: true })
+
+      const porData = {}
+      ;(data || []).forEach(l => {
+        if (!porData[l.data]) porData[l.data] = []
+        porData[l.data].push(l)
+      })
+      setLancamentosHistoricos(porData)
+    }
+    fetchHistorico()
+  }, [user, anoAlvo, mesAlvoNum])
 
   const primeiroDiaMes = new Date(anoAlvo, mesAlvoNum - 1, 1).getDay()
   const totalDiasNoMes = new Date(anoAlvo, mesAlvoNum, 0).getDate()
 
+  // Merge projeção (hoje+) com histórico (passado) para o mês exibido
+  const diasDoMes = (() => {
+    const diasProjecao = projecao.filter(d => {
+      const dt = new Date(d.data + 'T00:00:00')
+      return dt.getFullYear() === anoAlvo && (dt.getMonth() + 1) === mesAlvoNum
+    })
+
+    const diasHistoricosMes = Object.entries(lancamentosHistoricos)
+      .filter(([dateStr]) => {
+        const dt = new Date(dateStr + 'T00:00:00')
+        return dt.getFullYear() === anoAlvo && (dt.getMonth() + 1) === mesAlvoNum && dateStr < hojeStr
+      })
+      .map(([dateStr, eventos]) => ({
+        data: dateStr,
+        saldo: null,
+        _historico: true,
+        eventos: eventos.map(l => ({ tipo: l.tipo, descricao: l.descricao, valor: Number(l.valor), origem: 'historico' }))
+      }))
+      .filter(d => !diasProjecao.find(p => p.data === d.data))
+
+    return [...diasHistoricosMes, ...diasProjecao].sort((a, b) => a.data.localeCompare(b.data))
+  })()
+
   const getDadosDia = (numDia) => {
     const dateStr = `${anoAlvo}-${String(mesAlvoNum).padStart(2, '0')}-${String(numDia).padStart(2, '0')}`
-    return projecao.find(d => d.data === dateStr)
+    return diasDoMes.find(d => d.data === dateStr)
   }
 
-  const hojeStr = hoje.toISOString().split('T')[0]
   const diaDetalhe = diaSelecionado ? getDadosDia(diaSelecionado) : null
 
   if (loading) return (
@@ -82,13 +133,18 @@ export default function VisaoMensal() {
 
             let bgColor = 'bg-white/5'
             if (dadosDia) {
-              const saldo = dadosDia.saldo
-              if (saldo < 0) bgColor = 'bg-red/20'
-              else if (saldo < 200) bgColor = 'bg-red/10'
-              else if (saldo < 500) bgColor = 'bg-yellow/15'
-              else if (saldo < 1000) bgColor = 'bg-yellow/10'
-              else if (saldo < 2000) bgColor = 'bg-green/8'
-              else bgColor = 'bg-green/15'
+              if (dadosDia._historico) {
+                // Dias passados com eventos: cor neutra para indicar "histórico"
+                bgColor = dadosDia.eventos.length > 0 ? 'bg-white/10' : 'bg-white/5'
+              } else {
+                const saldo = dadosDia.saldo
+                if (saldo < 0) bgColor = 'bg-red/20'
+                else if (saldo < 200) bgColor = 'bg-red/10'
+                else if (saldo < 500) bgColor = 'bg-yellow/15'
+                else if (saldo < 1000) bgColor = 'bg-yellow/10'
+                else if (saldo < 2000) bgColor = 'bg-green/8'
+                else bgColor = 'bg-green/15'
+              }
             }
 
             let borderColor = 'border-transparent'
@@ -170,14 +226,15 @@ export default function VisaoMensal() {
               const dt = new Date(dia.data + 'T00:00:00')
               const isHoje = dia.data === hojeStr
               const isPast = dia.data < hojeStr
-              const cor = corSaldo(dia.saldo)
-              const status = statusSaldo(dia.saldo)
+              const cor = dia._historico ? '#64748B' : corSaldo(dia.saldo)
+              const status = dia._historico ? null : statusSaldo(dia.saldo)
+              const temEventos = dia.eventos && dia.eventos.length > 0
 
               return (
                 <tr key={dia.data}
                   className={`border-b border-border/40 transition-colors cursor-pointer ${
                     isHoje ? 'bg-indigo/10' : diaSelecionado === dt.getDate() ? 'bg-white/5' : 'hover:bg-white/5'
-                  } ${isPast ? 'opacity-50' : ''}`}
+                  } ${isPast && !temEventos ? 'opacity-50' : ''}`}
                   onClick={() => setDiaSelecionado(dt.getDate() === diaSelecionado ? null : dt.getDate())}>
                   <td className="px-3 md:px-6 py-2 md:py-3">
                     <span className={`font-display font-bold text-base md:text-lg ${isHoje ? 'text-indigo' : 'text-textsecondary'}`}>
@@ -204,7 +261,7 @@ export default function VisaoMensal() {
                   </td>
                   <td className="px-3 md:px-6 py-2 md:py-3 text-right">
                     <span className="font-display font-bold text-sm md:text-lg" style={{ color: cor }}>
-                      {formatBRL(dia.saldo)}
+                      {dia._historico ? '—' : formatBRL(dia.saldo)}
                     </span>
                     {status === 'negativo' && (
                       <span className="ml-2 text-xs bg-red/20 text-red px-2 py-0.5 rounded-full">risco</span>

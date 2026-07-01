@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { useCategorias } from '../hooks/useCategorias'
 import { useConfig } from '../contexts/ConfigContext'
-import { Plus, Trash2, Pencil, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft } from 'lucide-react'
+import { Plus, Trash2, Pencil, ArrowUpCircle, ArrowDownCircle, ArrowRightLeft, ChevronDown, ChevronRight } from 'lucide-react'
 import FAB from '../components/FAB'
 
 const formatBRL = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 const formatData = (d) => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')
+
+// Data local sem conversão UTC — evita adiantar um dia para fusos UTC-
+const dataHojeLocal = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 const formasPagamento = [
   { valor: 'pix', label: 'Pix' },
@@ -30,7 +36,7 @@ export default function Movimentacoes() {
   const [dadosDicaAporte, setDadosDicaAporte] = useState(null)
 
   const vazio = {
-    data: new Date().toISOString().split('T')[0],
+    data: dataHojeLocal(),
     descricao: '', categoria_id: '', valor: '', tipo: 'saida',
     forma_pagamento: 'pix', conta_id: '', conta_destino_id: '',
     recorrente: false, dia_recorrencia: '15',
@@ -68,7 +74,7 @@ export default function Movimentacoes() {
     setLoading(true)
 
     const payload = {
-      data: form.recorrente ? new Date().toISOString().split('T')[0] : form.data,
+      data: form.recorrente ? dataHojeLocal() : form.data,
       descricao: form.descricao,
       valor: parseFloat(form.valor),
       tipo: form.tipo,
@@ -102,7 +108,9 @@ export default function Movimentacoes() {
 
     // Atualizar saldos das contas
     if (!editandoId && !payload.recorrente) {
-      if (payload.tipo === 'entrada') {
+      // Lançamentos futuros NÃO atualizam saldo_atual — entram apenas na projeção
+      const dataHoje = dataHojeLocal()
+      if (payload.tipo === 'entrada' && payload.data <= dataHoje) {
         const { data: conta } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
         if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) + payload.valor }).eq('id', payload.conta_id)
 
@@ -191,12 +199,12 @@ export default function Movimentacoes() {
               }
             }
           }
-        } else {
+        } else if (payload.data <= dataHoje) {
           const { data: conta } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
           if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) - payload.valor }).eq('id', payload.conta_id)
         }
 
-      } else if (payload.tipo === 'transferencia') {
+      } else if (payload.tipo === 'transferencia' && payload.data <= dataHoje) {
         const { data: contaOrigem } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
         const { data: contaDestino } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_destino_id).single()
         if (contaOrigem) await supabase.from('contas').update({ saldo_atual: Number(contaOrigem.saldo_atual) - payload.valor }).eq('id', payload.conta_id)
@@ -266,7 +274,7 @@ export default function Movimentacoes() {
   const handleDelete = async (m) => {
     await supabase.from('lancamentos').delete().eq('id', m.id)
     // Reverter impacto no saldo se não for recorrente (já foi aplicado na hora)
-    if (!m.recorrente) {
+    if (!m.recorrente && m.data <= dataHojeLocal()) {
       if (m.tipo === 'entrada') {
         const conta = contas.find(c => c.id === m.conta_id)
         if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) - Number(m.valor) }).eq('id', m.conta_id)
@@ -294,11 +302,39 @@ export default function Movimentacoes() {
     fetchContas()
   }
 
+  const [expandidos, setExpandidos] = useState(new Set())
+
   const categoriasFiltradas = categorias.filter(c => c.tipo === form.tipo)
   const movimentacoesFiltradas = filtroTipo === 'todos' ? movimentacoes : movimentacoes.filter(m => m.tipo === filtroTipo)
 
   const iconePorTipo = { entrada: ArrowUpCircle, saida: ArrowDownCircle, transferencia: ArrowRightLeft }
   const corPorTipo = { entrada: 'text-green', saida: 'text-red', transferencia: 'text-indigo' }
+
+  // Agrupar visualmente lançamentos do mesmo parcela_id numa única linha expansível
+  const movimentacoesAgrupadas = (() => {
+    const result = []
+    const gruposMapa = {}
+    for (const m of movimentacoesFiltradas) {
+      if (m.parcela_id) {
+        if (!gruposMapa[m.parcela_id]) {
+          gruposMapa[m.parcela_id] = {
+            _grupo: true,
+            parcela_id: m.parcela_id,
+            descricao: m.descricao.replace(/ \(\d+\/\d+\)$/, ''),
+            valor_parcela: m.valor,
+            conta: m.conta,
+            tipo: m.tipo,
+            items: []
+          }
+          result.push(gruposMapa[m.parcela_id])
+        }
+        gruposMapa[m.parcela_id].items.push(m)
+      } else {
+        result.push(m)
+      }
+    }
+    return result
+  })()
 
   return (
     <div>
@@ -336,32 +372,90 @@ export default function Movimentacoes() {
             </tr>
           </thead>
           <tbody>
-            {movimentacoesFiltradas.map(m => {
-              const Icone = iconePorTipo[m.tipo]
+            {movimentacoesAgrupadas.map((item) => {
+              if (item._grupo) {
+                const expandido = expandidos.has(item.parcela_id)
+                const Icone = iconePorTipo[item.tipo]
+                const toggleGrupo = () => setExpandidos(prev => {
+                  const n = new Set(prev)
+                  n.has(item.parcela_id) ? n.delete(item.parcela_id) : n.add(item.parcela_id)
+                  return n
+                })
+                return (
+                  <React.Fragment key={`grupo-${item.parcela_id}`}>
+                    <tr className="border-b border-border/50 bg-indigo/5 hover:bg-indigo/10 transition-colors cursor-pointer" onClick={toggleGrupo}>
+                      <td className="px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm">
+                        {item.items[0] ? formatData(item.items[0].data) : '—'}
+                      </td>
+                      <td className="px-3 md:px-6 py-3 md:py-4 text-textprimary">
+                        <div className="flex items-center gap-1 md:gap-2">
+                          <Icone size={14} className={corPorTipo[item.tipo]} />
+                          <span className="text-xs md:text-sm truncate max-w-[90px] md:max-w-none">{item.descricao}</span>
+                          <span className="text-xs bg-indigo/15 text-indigo px-2 py-0.5 rounded-full flex-shrink-0">
+                            {item.items.length}x parcelado
+                          </span>
+                          {expandido
+                            ? <ChevronDown size={13} className="text-textsecondary flex-shrink-0" />
+                            : <ChevronRight size={13} className="text-textsecondary flex-shrink-0" />}
+                        </div>
+                      </td>
+                      <td className="hidden md:table-cell px-6 py-4 text-textsecondary text-sm">{item.conta?.nome}</td>
+                      <td className={`px-3 md:px-6 py-3 md:py-4 text-right text-xs md:text-sm font-medium ${corPorTipo[item.tipo]}`}>
+                        -{formatBRL(item.valor_parcela)}/mês
+                      </td>
+                      <td className="px-3 md:px-6 py-3 md:py-4" />
+                    </tr>
+                    {expandido && item.items.map(m => (
+                      <tr key={m.id} className="border-b border-border/30 hover:bg-white/5 transition-colors">
+                        <td className="pl-6 md:pl-10 pr-3 md:pr-6 py-2 md:py-3 text-textsecondary text-xs">{formatData(m.data)}</td>
+                        <td className="px-3 md:px-6 py-2 md:py-3">
+                          <span className="text-xs text-textsecondary pl-2 md:pl-4">{m.descricao}</span>
+                        </td>
+                        <td className="hidden md:table-cell px-6 py-2 md:py-3 text-textsecondary text-xs">{m.conta?.nome}</td>
+                        <td className="px-3 md:px-6 py-2 md:py-3 text-right text-xs font-medium text-red">
+                          -{formatBRL(m.valor)}
+                        </td>
+                        <td className="px-3 md:px-6 py-2 md:py-3 text-right">
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={e => { e.stopPropagation(); handleEdit(m) }} className="text-textsecondary hover:text-indigo transition-colors">
+                              <Pencil size={13} />
+                            </button>
+                            <button onClick={e => { e.stopPropagation(); handleDelete(m) }} className="text-textsecondary hover:text-red transition-colors">
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                )
+              }
+
+              const Icone = iconePorTipo[item.tipo]
               return (
-                <tr key={m.id} className="border-b border-border/50 hover:bg-white/5 transition-colors">
+                <tr key={item.id} className="border-b border-border/50 hover:bg-white/5 transition-colors">
                   <td className="px-3 md:px-6 py-3 md:py-4 text-textsecondary text-xs md:text-sm">
-                    {m.recorrente ? `Todo dia ${m.dia_recorrencia}` : formatData(m.data)}
+                    {item.recorrente ? `Todo dia ${item.dia_recorrencia}` : formatData(item.data)}
                   </td>
                   <td className="px-3 md:px-6 py-3 md:py-4 text-textprimary">
                     <div className="flex items-center gap-1 md:gap-2">
-                      <Icone size={14} className={corPorTipo[m.tipo]} />
-                      <span className="text-xs md:text-sm truncate max-w-[120px] md:max-w-none">{m.descricao}</span>
-                      {m.categorias?.nome && <span className="hidden md:inline text-textsecondary text-xs">· {m.categorias.nome}</span>}
+                      <Icone size={14} className={corPorTipo[item.tipo]} />
+                      <span className="text-xs md:text-sm truncate max-w-[120px] md:max-w-none">{item.descricao}</span>
+                      {item.categorias?.nome && <span className="hidden md:inline text-textsecondary text-xs">· {item.categorias.nome}</span>}
                     </div>
                   </td>
                   <td className="hidden md:table-cell px-6 py-4 text-textsecondary text-sm">
-                    {m.tipo === 'transferencia' ? `${m.conta?.nome} → ${m.contaDestino?.nome}` : m.conta?.nome}
+                    {item.tipo === 'transferencia' ? `${item.conta?.nome} → ${item.contaDestino?.nome}` : item.conta?.nome}
                   </td>
-                  <td className={`px-3 md:px-6 py-3 md:py-4 text-right text-xs md:text-sm font-medium ${corPorTipo[m.tipo]}`}>
-                    {m.tipo === 'entrada' ? '+' : m.tipo === 'saida' ? '-' : ''}{formatBRL(m.valor)}
+                  <td className={`px-3 md:px-6 py-3 md:py-4 text-right text-xs md:text-sm font-medium ${corPorTipo[item.tipo]}`}>
+                    {item.tipo === 'entrada' ? '+' : item.tipo === 'saida' ? '-' : ''}{formatBRL(item.valor)}
                   </td>
                   <td className="px-3 md:px-6 py-3 md:py-4 text-right">
                     <div className="flex gap-2 justify-end">
-                      <button onClick={() => handleEdit(m)} className="text-textsecondary hover:text-indigo transition-colors">
+                      <button onClick={() => handleEdit(item)} className="text-textsecondary hover:text-indigo transition-colors">
                         <Pencil size={15} />
                       </button>
-                      <button onClick={() => handleDelete(m)} className="text-textsecondary hover:text-red transition-colors">
+                      <button onClick={() => handleDelete(item)} className="text-textsecondary hover:text-red transition-colors">
                         <Trash2 size={15} />
                       </button>
                     </div>
@@ -369,7 +463,7 @@ export default function Movimentacoes() {
                 </tr>
               )
             })}
-            {movimentacoesFiltradas.length === 0 && (
+            {movimentacoesAgrupadas.length === 0 && (
               <tr><td colSpan={5} className="px-6 py-12 text-center text-textsecondary">Nenhuma movimentação encontrada</td></tr>
             )}
           </tbody>
