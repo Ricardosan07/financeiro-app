@@ -22,18 +22,18 @@ export function useProjecao(diasFuturos = 90) {
     const saldo = contasLivres.reduce((sum, c) => sum + Number(c.saldo_atual), 0)
     setSaldoInicial(saldo)
 
-    const hoje = new Date()
-    hoje.setHours(0, 0, 0, 0)
-    const fim = new Date(hoje)
-    fim.setDate(fim.getDate() + diasFuturos)
+    // Usar componentes locais para evitar drift UTC (ex: UTC-3 → meia-noite local = 03:00 UTC)
+    const agora = new Date()
+    const dLocalStr = (d) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-    const dataInicioStr = hoje.toISOString().split('T')[0]
-    const dataFimStr = fim.toISOString().split('T')[0]
+    const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate())
+    const amanha = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1)
+    const fim = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + diasFuturos)
 
     // Hoje e passado já estão contabilizados no saldo real — buscar só lançamentos futuros
-    const amanha = new Date(hoje)
-    amanha.setDate(amanha.getDate() + 1)
-    const dataAmanha = amanha.toISOString().split('T')[0]
+    const dataAmanha = dLocalStr(amanha)
+    const dataFimStr = dLocalStr(fim)
 
     // Lançamentos avulsos futuros — exclui compras no crédito já vinculadas à fatura
     // (a fatura aparece como compromisso separado, evitando dupla contagem)
@@ -85,8 +85,8 @@ export function useProjecao(diasFuturos = 90) {
 
     const lancamentosFatura = []
 
-    const hojeRef = new Date()
-    const diaHoje = hojeRef.getDate()
+    const hojeRef = agora
+    const diaHoje = agora.getDate()
 
     for (const fatura of (todasFaturas || [])) {
       let totalFatura = Number(fatura.valor_inicial || 0)
