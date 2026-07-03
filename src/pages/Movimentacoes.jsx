@@ -32,6 +32,7 @@ export default function Movimentacoes() {
   const [loading, setLoading] = useState(false)
   const [filtroTipo, setFiltroTipo] = useState('todos')
   const [editandoId, setEditandoId] = useState(null)
+  const [editandoOriginal, setEditandoOriginal] = useState(null)
   const [showDicaAporte, setShowDicaAporte] = useState(false)
   const [dadosDicaAporte, setDadosDicaAporte] = useState(null)
 
@@ -85,6 +86,7 @@ export default function Movimentacoes() {
       num_parcelas: '1'
     })
     setEditandoId(null)
+    setEditandoOriginal(null)
     setShowForm(false)
   }
 
@@ -127,10 +129,28 @@ export default function Movimentacoes() {
       return
     }
 
+    const dataHoje = dataHojeLocal()
+
+    // Se for edição, reverter o efeito no saldo do lançamento original antes de aplicar o novo
+    if (editandoId && editandoOriginal && !editandoOriginal.recorrente && editandoOriginal.data <= dataHoje) {
+      const m = editandoOriginal
+      if (m.tipo === 'entrada') {
+        const { data: conta } = await supabase.from('contas').select('saldo_atual').eq('id', m.conta_id).single()
+        if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) - Number(m.valor) }).eq('id', m.conta_id)
+      } else if (m.tipo === 'saida' && m.forma_pagamento !== 'credito') {
+        const { data: conta } = await supabase.from('contas').select('saldo_atual').eq('id', m.conta_id).single()
+        if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) + Number(m.valor) }).eq('id', m.conta_id)
+      } else if (m.tipo === 'transferencia') {
+        const { data: contaOrigem } = await supabase.from('contas').select('saldo_atual').eq('id', m.conta_id).single()
+        const { data: contaDestino } = await supabase.from('contas').select('saldo_atual').eq('id', m.conta_destino_id).single()
+        if (contaOrigem) await supabase.from('contas').update({ saldo_atual: Number(contaOrigem.saldo_atual) + Number(m.valor) }).eq('id', m.conta_id)
+        if (contaDestino) await supabase.from('contas').update({ saldo_atual: Number(contaDestino.saldo_atual) - Number(m.valor) }).eq('id', m.conta_destino_id)
+      }
+    }
+
     // Atualizar saldos das contas
-    if (!editandoId && !payload.recorrente) {
+    if (!payload.recorrente) {
       // Lançamentos futuros NÃO atualizam saldo_atual — entram apenas na projeção
-      const dataHoje = dataHojeLocal()
       if (payload.tipo === 'entrada' && payload.data <= dataHoje) {
         const { data: conta } = await supabase.from('contas').select('saldo_atual').eq('id', payload.conta_id).single()
         if (conta) await supabase.from('contas').update({ saldo_atual: Number(conta.saldo_atual) + payload.valor }).eq('id', payload.conta_id)
@@ -307,6 +327,7 @@ export default function Movimentacoes() {
       cartao_id: m.cartao_id || ''
     })
     setEditandoId(m.id)
+    setEditandoOriginal(m)
     setShowForm(true)
   }
 
