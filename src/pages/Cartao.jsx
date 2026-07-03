@@ -39,6 +39,7 @@ export default function Cartao() {
   const [valorParcial, setValorParcial] = useState('')
   const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().split('T')[0])
   const [valorInicial, setValorInicial] = useState('')
+  const [dataVencimento, setDataVencimento] = useState('')
   const [setupForm, setSetupForm] = useState({ nome: '', dia_fechamento: '27', conta_pagamento_id: '' })
   const [contas, setContas] = useState([])
   const [saving, setSaving] = useState(false)
@@ -132,10 +133,12 @@ export default function Cartao() {
     if (!faturaAtual) return
     setSaving(true)
     await supabase.from('faturas').update({
-      valor_inicial: parseFloat(valorInicial.replace(',', '.')) || 0
+      valor_inicial: parseFloat(valorInicial.replace(',', '.')) || 0,
+      data_vencimento: dataVencimento || null
     }).eq('id', faturaAtual.id)
     setShowEditarInicial(false)
     setValorInicial('')
+    setDataVencimento('')
     recarregar()
     setSaving(false)
   }
@@ -261,7 +264,9 @@ export default function Cartao() {
           <div>
             <p className="text-textsecondary text-xs">Vencimento</p>
             <p className="text-textprimary text-sm font-medium">
-              {faturaAtual ? formatDataExtenso(faturaAtual.vencimento) : '—'}
+              {faturaAtual?.data_vencimento
+                ? new Date(faturaAtual.data_vencimento + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+                : faturaAtual ? formatDataExtenso(faturaAtual.vencimento) : '—'}
             </p>
           </div>
           <div>
@@ -323,7 +328,11 @@ export default function Cartao() {
             </div>
             <div className="flex items-center gap-2">
               <p className="text-red font-medium">{formatBRL(faturaAtual.valor_inicial)}</p>
-              <button onClick={() => { setValorInicial(String(faturaAtual.valor_inicial)); setShowEditarInicial(true) }}
+              <button onClick={() => {
+                setValorInicial(String(faturaAtual.valor_inicial))
+                setDataVencimento(faturaAtual.data_vencimento || '')
+                setShowEditarInicial(true)
+              }}
                 className="text-textsecondary hover:text-indigo">
                 <Pencil size={13} />
               </button>
@@ -333,7 +342,7 @@ export default function Cartao() {
 
         {faturaAtual && Number(faturaAtual.valor_inicial) === 0 && comprasFatura.length === 0 && (
           <div className="px-5 py-4 border-b border-border/50">
-            <button onClick={() => { setValorInicial(''); setShowEditarInicial(true) }}
+            <button onClick={() => { setValorInicial(''); setDataVencimento(''); setShowEditarInicial(true) }}
               className="text-indigo text-sm hover:underline">
               + Informar saldo anterior ao sistema
             </button>
@@ -452,17 +461,54 @@ export default function Cartao() {
       {showEditarInicial && (
         <div className="fixed inset-0 bg-black/60 flex items-end md:items-center justify-center z-50">
           <div className="bg-surface border border-border rounded-t-2xl md:rounded-2xl p-6 w-full md:max-w-md">
-            <h2 className="font-display text-xl font-bold text-textprimary mb-2">Saldo anterior</h2>
-            <p className="text-textsecondary text-sm mb-4">
-              Informe o saldo devedor acumulado antes de usar este sistema.
+            <h2 className="font-display text-xl font-bold text-textprimary mb-2">Valor da fatura atual</h2>
+            <p className="text-textsecondary text-sm mb-5">
+              Informe o total acumulado nesta fatura antes de usar o sistema.
+              Daqui pra frente, cada compra no crédito vai acumular automaticamente.
             </p>
-            <input type="number" value={valorInicial} onChange={e => setValorInicial(e.target.value)}
-              className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo text-lg mb-6"
-              placeholder="0,00" autoFocus />
-            <div className="flex gap-3">
-              <button onClick={() => setShowEditarInicial(false)}
-                className="flex-1 border border-border text-textsecondary py-3 rounded-xl text-sm">Cancelar</button>
-              <button onClick={handleEditarInicial} disabled={saving}
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-textsecondary text-sm mb-1 block">Valor total da fatura (R$)</label>
+                <input
+                  type="number"
+                  value={valorInicial}
+                  onChange={e => setValorInicial(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo text-lg"
+                  placeholder="0,00"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-textsecondary text-sm mb-1 block">Data de vencimento</label>
+                <input
+                  type="date"
+                  value={dataVencimento}
+                  onChange={e => setDataVencimento(e.target.value)}
+                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo"
+                />
+                <p className="text-textsecondary text-xs mt-1">
+                  Ex: 05/07/2026 — quando essa fatura vence no banco
+                </p>
+              </div>
+
+              {valorInicial && dataVencimento && (
+                <div className="bg-indigo/10 border border-indigo/20 rounded-xl px-4 py-3">
+                  <p className="text-textsecondary text-xs mb-1">Como vai aparecer na projeção</p>
+                  <p className="text-indigo text-sm font-medium">
+                    -{formatBRL(parseFloat(valorInicial) || 0)} no dia {new Date(dataVencimento + 'T00:00:00').toLocaleDateString('pt-BR')}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => { setShowEditarInicial(false); setValorInicial(''); setDataVencimento('') }}
+                className="flex-1 border border-border text-textsecondary py-3 rounded-xl text-sm">
+                Cancelar
+              </button>
+              <button onClick={handleEditarInicial} disabled={saving || !valorInicial}
                 className="flex-1 bg-indigo text-white py-3 rounded-xl text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Confirmar'}
               </button>

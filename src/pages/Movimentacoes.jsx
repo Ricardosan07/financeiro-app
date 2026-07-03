@@ -35,12 +35,15 @@ export default function Movimentacoes() {
   const [showDicaAporte, setShowDicaAporte] = useState(false)
   const [dadosDicaAporte, setDadosDicaAporte] = useState(null)
 
+  const [cartoes, setCartoes] = useState([])
+
   const vazio = {
     data: dataHojeLocal(),
     descricao: '', categoria_id: '', valor: '', tipo: 'saida',
     forma_pagamento: 'pix', conta_id: '', conta_destino_id: '',
     recorrente: false, dia_recorrencia: '15',
-    num_parcelas: '1'
+    num_parcelas: '1',
+    cartao_id: ''
   }
   const [form, setForm] = useState(vazio)
 
@@ -58,14 +61,29 @@ export default function Movimentacoes() {
     const { data } = await supabase.from('contas').select('*').eq('user_id', user.id).eq('ativo', true)
     setContas(data || [])
     if (data && data.length > 0 && !form.conta_id) {
-      setForm(f => ({ ...f, conta_id: data[0].id }))
+      const contaLivreDefault = data.find(c => c.categoria_conta === 'livre')?.id || data[0].id
+      setForm(f => ({ ...f, conta_id: contaLivreDefault }))
     }
   }
 
-  useEffect(() => { fetchMovimentacoes(); fetchContas() }, [])
+  const fetchCartoes = async () => {
+    const { data } = await supabase
+      .from('cartoes')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('ativo', true)
+    setCartoes(data || [])
+  }
+
+  useEffect(() => { fetchMovimentacoes(); fetchContas(); fetchCartoes() }, [])
 
   const resetForm = () => {
-    setForm({ ...vazio, conta_id: contas[0]?.id || '' })
+    const contaLivreDefault = contas.find(c => c.categoria_conta === 'livre')?.id || contas[0]?.id || ''
+    setForm({
+      ...vazio,
+      conta_id: contaLivreDefault,
+      num_parcelas: '1'
+    })
     setEditandoId(null)
     setShowForm(false)
   }
@@ -80,7 +98,10 @@ export default function Movimentacoes() {
       tipo: form.tipo,
       categoria_id: form.tipo !== 'transferencia' ? (form.categoria_id || null) : null,
       forma_pagamento: form.tipo === 'saida' ? form.forma_pagamento : null,
-      conta_id: form.conta_id,
+      // Se crédito, conta_id será a conta de pagamento do cartão (definida depois de buscar o cartão)
+      conta_id: form.tipo === 'transferencia' ? form.conta_id
+        : form.forma_pagamento === 'credito' ? null
+        : form.conta_id,
       conta_destino_id: form.tipo === 'transferencia' ? form.conta_destino_id : null,
       recorrente: form.tipo === 'transferencia' ? form.recorrente : false,
       dia_recorrencia: (form.tipo === 'transferencia' && form.recorrente) ? parseInt(form.dia_recorrencia) : null,
@@ -118,11 +139,28 @@ export default function Movimentacoes() {
         // Crédito: NÃO desconta saldo — vincula à fatura e distribui parcelas pelos meses seguintes
         if (payload.forma_pagamento === 'credito') {
           if (novoLancamentoId) {
-            const { data: cartoes } = await supabase
-              .from('cartoes').select('*').eq('user_id', user.id).eq('ativo', true).limit(1)
+            // Usar cartão selecionado no formulário, ou buscar o primeiro ativo
+            let cartaoUsado = null
 
-            if (cartoes && cartoes.length > 0) {
-              const cartao = cartoes[0]
+            if (form.cartao_id) {
+              const { data: cartaoSelecionado } = await supabase
+                .from('cartoes').select('*').eq('id', form.cartao_id).single()
+              cartaoUsado = cartaoSelecionado
+            }
+
+            if (!cartaoUsado) {
+              const { data: cartoesAtivos } = await supabase
+                .from('cartoes').select('*').eq('user_id', user.id).eq('ativo', true).limit(1)
+              cartaoUsado = cartoesAtivos?.[0] || null
+            }
+
+            if (cartaoUsado) {
+              // Atualizar conta_id para a conta de pagamento do cartão
+              await supabase.from('lancamentos').update({
+                conta_id: cartaoUsado.conta_pagamento_id
+              }).eq('id', novoLancamentoId)
+
+              const cartao = cartaoUsado
               const numParcelas = parseInt(form.num_parcelas) || 1
               const valorParcela = numParcelas > 1
                 ? payload.valor / numParcelas
@@ -265,7 +303,8 @@ export default function Movimentacoes() {
       conta_id: m.conta_id,
       conta_destino_id: m.conta_destino_id || '',
       recorrente: m.recorrente || false,
-      dia_recorrencia: m.dia_recorrencia ? String(m.dia_recorrencia) : '15'
+      dia_recorrencia: m.dia_recorrencia ? String(m.dia_recorrencia) : '15',
+      cartao_id: m.cartao_id || ''
     })
     setEditandoId(m.id)
     setShowForm(true)
@@ -589,13 +628,39 @@ export default function Movimentacoes() {
                 </>
               )}
 
-              <div>
-                <label className="text-textsecondary text-sm mb-1 block">{form.tipo === 'transferencia' ? 'Conta de origem' : 'Conta'}</label>
-                <select value={form.conta_id} onChange={e => setForm({ ...form, conta_id: e.target.value })}
-                  className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo">
-                  {contas.map(c => <option key={c.id} value={c.id}>{c.nome} ({c.categoria_conta})</option>)}
-                </select>
-              </div>
+              {/* Campo Conta (débito/pix/transferência) ou Cartão (crédito) */}
+              {form.tipo !== 'transferencia' && form.forma_pagamento === 'credito' ? (
+                <div>
+                  <label className="text-textsecondary text-sm mb-1 block">Cartão</label>
+                  <select
+                    value={form.cartao_id || ''}
+                    onChange={e => setForm({ ...form, cartao_id: e.target.value })}
+                    className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo"
+                  >
+                    <option value="">Selecione o cartão...</option>
+                    {cartoes.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome} · Fecha dia {c.dia_fechamento}
+                      </option>
+                    ))}
+                  </select>
+                  {cartoes.length === 0 && (
+                    <p className="text-yellow text-xs mt-1">
+                      ⚠ Nenhum cartão cadastrado. Vá em Cartão → + Novo para cadastrar.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="text-textsecondary text-sm mb-1 block">{form.tipo === 'transferencia' ? 'Conta de origem' : 'Conta'}</label>
+                  <select value={form.conta_id} onChange={e => setForm({ ...form, conta_id: e.target.value })}
+                    className="w-full bg-bg border border-border rounded-xl px-4 py-3 text-textprimary focus:outline-none focus:border-indigo">
+                    {contas
+                      .filter(c => form.tipo === 'transferencia' || c.categoria_conta === 'livre' || c.categoria_conta === 'reserva')
+                      .map(c => <option key={c.id} value={c.id}>{c.nome} ({c.categoria_conta})</option>)}
+                  </select>
+                </div>
+              )}
 
               {form.tipo === 'transferencia' && (
                 <>

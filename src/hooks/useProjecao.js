@@ -35,22 +35,23 @@ export function useProjecao(diasFuturos = 90) {
     const dataAmanha = dLocalStr(amanha)
     const dataFimStr = dLocalStr(fim)
 
-    // Lançamentos avulsos futuros — exclui compras no crédito já vinculadas à fatura
-    // (a fatura aparece como compromisso separado, evitando dupla contagem)
-    const { data: avulsosRaw } = await supabase
+    // Buscar todos os lançamentos futuros e filtrar no JS
+    // EXCLUIR apenas compras no crédito (fatura_id preenchido + forma credito)
+    // INCLUIR pagamentos de fatura, débitos, entradas, transferências
+    const { data: todosLancamentosFuturos } = await supabase
       .from('lancamentos')
       .select('*, contaOrigem:conta_id(categoria_conta), contaDestino:conta_destino_id(categoria_conta)')
       .eq('user_id', user.id)
       .eq('recorrente', false)
       .gte('data', dataAmanha)
-      .or('forma_pagamento.neq.credito,forma_pagamento.is.null')
-      .is('fatura_id', null)
 
-    const lancamentosAvulsos = (avulsosRaw || []).map(l => ({
-      ...l,
-      contaOrigemCategoria: l.contaOrigem?.categoria_conta,
-      contaDestinoCategoria: l.contaDestino?.categoria_conta
-    }))
+    const lancamentosAvulsos = (todosLancamentosFuturos || [])
+      .filter(l => !(l.fatura_id && l.forma_pagamento === 'credito'))
+      .map(l => ({
+        ...l,
+        contaOrigemCategoria: l.contaOrigem?.categoria_conta,
+        contaDestinoCategoria: l.contaDestino?.categoria_conta
+      }))
 
     const { data: recorrentesRaw } = await supabase
       .from('lancamentos')
@@ -114,8 +115,11 @@ export function useProjecao(diasFuturos = 90) {
 
       if (totalFatura <= 0) continue
 
+      // Usar data_vencimento informada pelo usuário se disponível
       let dataProjetada
-      if (fatura.status === 'fechada') {
+      if (fatura.data_vencimento) {
+        dataProjetada = fatura.data_vencimento
+      } else if (fatura.status === 'fechada') {
         dataProjetada = dataAmanha
       } else {
         // Vencimento = dia 05 do mês seguinte ao mês da FATURA (não de hoje)
